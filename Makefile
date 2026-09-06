@@ -22,10 +22,11 @@ settings:           ## settings menu (API providers etc.)
 providers:          ## list/switch API providers
 	python3 -m god_agent.cli providers list
 
-test:
+test:               ## run all tests (selftest + test_core)
 	python3 -m god_agent.selftest
+	python3 tests/test_core.py
 
-selftest:
+selftest:           ## run zero-dependency selftests
 	python3 -m god_agent.selftest
 
 clean:

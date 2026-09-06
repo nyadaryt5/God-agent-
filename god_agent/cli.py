@@ -1,13 +1,28 @@
 """Command-line interface for God-Agent (goda)."""
 from __future__ import annotations
 
+import sys
+
+if sys.version_info < (3, 10):
+    sys.stderr.write(
+        f"God-Agent requires Python 3.10 or newer (detected {sys.version.split()[0]}).\n"
+        "Please upgrade your Python installation (e.g. `sudo apt install python3.11`).\n"
+    )
+    sys.exit(1)
+
 import argparse
 import json
 import os
 import secrets
-import sys
 import time
 from typing import Optional
+
+# Support running directly: `python3 god_agent/cli.py`
+if __name__ == "__main__" and not __package__:
+    _pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _pkg_root not in sys.path:
+        sys.path.insert(0, _pkg_root)
+    __package__ = "god_agent"
 
 from . import __version__
 from .audit import AuditLog

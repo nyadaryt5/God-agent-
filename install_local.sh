@@ -8,6 +8,17 @@ APP_DIR="$HOME/.god-agent/app"
 STATE_DIR="$HOME/.god-agent"
 BIN_DIR="$HOME/.local/bin"
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "error: python3 >= 3.10 is required" >&2
+  exit 1
+fi
+
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1 || {
+  echo "error: python3 >= 3.10 is required (found $(python3 --version 2>&1))" >&2
+  echo "       please install or switch to python3.10+ (e.g. sudo apt install python3.11)" >&2
+  exit 1
+}
+
 echo "==> God-Agent local installer"
 echo "    source:  $SRC_DIR"
 echo "    app:     $APP_DIR"
@@ -72,10 +83,15 @@ exec python3 -m god_agent.cli "\$@"
 EOF
 chmod +x "$BIN_DIR/goda" "$BIN_DIR/god-agent"
 
-# 4. PATH hint
-if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc" 2>/dev/null || true
-fi
+# 4. PATH configuration (bash, zsh, profile)
+PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+  if [[ -f "$rc" || "$rc" == "$HOME/.bashrc" ]]; then
+    if ! grep -qsF "$PATH_LINE" "$rc" 2>/dev/null; then
+      echo "$PATH_LINE" >> "$rc" 2>/dev/null || true
+    fi
+  fi
+done
 
 echo
 echo "==> God-Agent installed. You can now run:"
@@ -85,3 +101,10 @@ echo "    goda settings  full settings menu (API providers, autonomy, sandbox…
 echo "    goda providers add Ollama --type openai --base-url http://localhost:11434 --model llama3.1 --active"
 echo
 echo "    API token: $(python3 -c "import json;print(json.load(open('$CONF'))['api']['token'])")"
+
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+  echo
+  echo "⚠️  NOTE: $BIN_DIR is not in your current PATH."
+  echo "    Run this command now to use 'goda' in this terminal:"
+  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+fi
