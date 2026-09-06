@@ -1,0 +1,53 @@
+{
+  "agent": {
+    "name": "God-Agent",
+    "max_steps": 24,
+    "model": "gpt-4o-mini",
+    "temperature": 0.2,
+    "task_timeout_s": 0,
+    "watchdog_interval_s": 60,
+    "reflection": { "enabled": true, "after_every_task": true, "max_chars": 600 }
+  },
+  "llm": {
+    "provider": "openai",
+    "api_key_env": "GODA_API_KEY",
+    "api_key": "",
+    "base_url": "",
+    "model": "gpt-4o-mini",
+    "timeout_s": 120,
+    "max_retries": 2
+  },
+  "execution": {
+    "memory_limit_mb": -1,
+    "cpu_limit_s": -1,
+    "max_processes": -1,
+    "kill_switch_interval_s": 2
+  },
+  "policy": {
+    "autonomy": "autonomous",
+    "approval": "auto",
+    "sandbox": "none",
+    "shell": { "enabled": true, "allow_network": true, "max_output_chars": 500000 },
+    "files": { "enabled": true, "protected": [], "max_read_chars": 2000000 },
+    "network": { "enabled": true, "max_bytes": 8000000, "timeout_s": 60 },
+    "evolution": { "enabled": true, "auto_apply": false, "max_attempts_per_day": 10 }
+  },
+  "memory": {
+    "db_path": "~/.god-agent/memory.db",
+    "max_episodes": 5000,
+    "max_reflections": 10000
+  },
+  "brain": {
+    "path": "~/.god-agent/brain.json",
+    "max_entries": 5000,
+    "encryption": "auto",
+    "inject_credentials": false,
+    "inject_prompts": true,
+    "auto_write": true
+  },
+  "self_model": { "path": "~/.god-agent/self.json", "max_update_chars": 2000, "max_versions": 100 },
+  "audit": { "path": "~/.god-agent/audit.jsonl", "max_mb": 256 },
+  "api": { "enabled": false, "host": "0.0.0.0", "port": 8765, "token": "", "tls": false },
+  "kill_switch": { "path": "~/.god-agent/DISABLED" },
+  "state": { "root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks" }
+}

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "god-agent"
+version = "0.2.0"
+description = "God-Agent (goda) — a self-aware, self-evolving AI system administrator for Linux servers."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "God-Agent Contributors" }]
+keywords = ["agent", "ai", "sysadmin", "linux", "self-evolving", "automation"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+goda = "god_agent.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["god_agent*"]
+
+[tool.setuptools.package-data]
+god_agent = ["static/*"]
