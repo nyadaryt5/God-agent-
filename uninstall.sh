@@ -13,6 +13,7 @@ systemctl stop god-agent.service 2>/dev/null || true
 systemctl disable god-agent.service 2>/dev/null || true
 rm -f /etc/systemd/system/god-agent.service
 systemctl daemon-reload 2>/dev/null || true
+rm -f /usr/local/bin/goda /usr/local/bin/god-agent
 rm -rf /opt/god-agent
 rm -rf /etc/god-agent
 

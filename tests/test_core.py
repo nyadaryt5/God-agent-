@@ -8,10 +8,30 @@ import json
 import os
 import sys
 import tempfile
+from pathlib import Path
+import contextlib
+import inspect
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest  # noqa: E402
+try:
+    import pytest  # noqa: E402
+except ImportError:
+    class _MockPytest:
+        @staticmethod
+        @contextlib.contextmanager
+        def raises(expected_exception, match=None):
+            try:
+                yield
+            except expected_exception as exc:
+                if match and match not in str(exc):
+                    raise AssertionError(f"Pattern {match!r} not found in {str(exc)!r}") from exc
+                return
+            except Exception as e:
+                raise AssertionError(f"Expected {expected_exception.__name__}, got {type(e).__name__}: {e}") from e
+            raise AssertionError(f"Expected {expected_exception.__name__} was not raised")
+
+    pytest = _MockPytest()  # type: ignore[assignment]
 
 from god_agent.config import default_config  # noqa: E402
 from god_agent.memory import MemoryStore  # noqa: E402
@@ -289,3 +309,33 @@ def test_agent_offline_smoke(tmp_path):
     assert result.success
     assert rt.memory.stats()["episodes"] == 1
     rt.close()
+
+
+if __name__ == "__main__":
+    current_module = sys.modules[__name__]
+    test_functions = [
+        obj for name, obj in inspect.getmembers(current_module)
+        if inspect.isfunction(obj) and name.startswith("test_")
+    ]
+
+    passed = 0
+    failed = 0
+    for fn in test_functions:
+        sig = inspect.signature(fn)
+        try:
+            if "tmp_path" in sig.parameters:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    fn(Path(tmp_dir))
+            else:
+                fn()
+            passed += 1
+            print(f"  PASS  {fn.__name__}")
+        except Exception as e:
+            failed += 1
+            print(f"  FAIL  {fn.__name__}: {type(e).__name__}: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+    print(f"\ntest_core: {passed} passed, {failed} failed")
+    sys.exit(0 if failed == 0 else 1)

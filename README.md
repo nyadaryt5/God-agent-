@@ -139,10 +139,21 @@ goda audit --verify
 
 ```bash
 python3 -m god_agent.selftest          # 0-dependency core tests
-python3 -m pytest -q                   # full test suite
+python3 -m pytest -q                   # full test suite (or: python3 tests/test_core.py)
 goda run "status"                      # works with the built-in heuristic planner
 goda serve                             # dashboard, no API key needed
 ```
+
+## Troubleshooting
+
+| Issue | Cause | Solution |
+|---|---|---|
+| `goda: command not found` | PATH not updated in current terminal | Run `export PATH="$HOME/.local/bin:$PATH"` (or open a new terminal). For `sudo` installs, launchers are installed in `/usr/local/bin`. |
+| `Python >= 3.10 is required` | System `python3` is older than 3.10 | Install Python 3.10+ (e.g. `sudo apt install python3.11`) and run with `python3.11 install.sh`. |
+| `systemctl` failures in Docker / WSL | Container or environment has no systemd init | Use local install: `./install.sh --local` or pass `--no-start`. |
+| `Permission denied: ./install.sh` | Script missing executable permission | Run `bash ./install.sh` or `chmod +x ./install.sh`. |
+| `no LLM API key — offline mode` | No LLM provider configured yet | Expected behavior — offline mode works with heuristic planner. Add a provider anytime: `goda providers add Ollama --base-url http://localhost:11434 --model llama3.1 --active`. |
+| Direct execution | Running without installation | Run `python3 god_agent/cli.py` or `python3 -m god_agent`. |
 
 ## Policy — read & tune before going to production
 

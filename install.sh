@@ -29,6 +29,12 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1 || {
+  echo "error: python3 >= 3.10 is required (found $(python3 --version 2>&1))" >&2
+  echo "       please install or switch to python3.10+ (e.g. sudo apt install python3.11)" >&2
+  exit 1
+}
+
 if [[ "$(id -u)" -ne 0 ]] || [[ "$FORCE_LOCAL" == "1" ]]; then
   exec bash "$SRC_DIR/install_local.sh" "$SRC_DIR"
 fi
@@ -42,6 +48,7 @@ echo "    run as:   $RUN_USER"
 PREFIX="/opt/god-agent"
 CONF_DIR="/etc/god-agent"
 STATE_DIR="/var/lib/god-agent"
+BIN_DEST="/usr/local/bin"
 
 rm -rf "$PREFIX"
 mkdir -p "$PREFIX"
@@ -94,6 +101,22 @@ if [[ "$RUN_USER" != "root" ]]; then
   chown -R "$RUN_USER" "$STATE_DIR"
 fi
 
+# ------------------------------------------------------------- launchers on PATH
+mkdir -p "$BIN_DEST"
+cat > "$BIN_DEST/goda" <<'EOF'
+#!/usr/bin/env bash
+export PYTHONPATH="/opt/god-agent${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m god_agent.cli "$@"
+EOF
+cat > "$BIN_DEST/god-agent" <<'EOF'
+#!/usr/bin/env bash
+export PYTHONPATH="/opt/god-agent${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m god_agent.cli "$@"
+EOF
+chmod 755 "$BIN_DEST/goda" "$BIN_DEST/god-agent"
+
+# ------------------------------------------------------------- systemd service
+mkdir -p /etc/systemd/system
 cat > /etc/systemd/system/god-agent.service <<UNITEOF
 [Unit]
 Description=God-Agent — self-aware AI system administrator
@@ -115,18 +138,19 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 UNITEOF
-chmod 644 /etc/systemd/system/god-agent.service
+chmod 644 /etc/systemd/system/god-agent.service 2>/dev/null || true
 
-systemctl daemon-reload
+systemctl daemon-reload >/dev/null 2>&1 || true
 systemctl enable god-agent.service >/dev/null 2>&1 || true
 if [[ "$START" == "1" ]]; then
-  systemctl restart god-agent.service || true
-  sleep 2
-  systemctl --no-pager status god-agent.service | head -6 || true
+  systemctl restart god-agent.service >/dev/null 2>&1 || true
+  sleep 1
+  systemctl --no-pager status god-agent.service 2>/dev/null | head -6 || true
 fi
 
 echo
 echo "==> God-Agent installed system-wide."
+echo "    commands: goda, god-agent (installed in $BIN_DEST)"
 echo "    service:  systemctl status god-agent"
 echo "    config:   $CONF_DIR/config.json"
 echo "    API:      http://localhost:8765/   (token in $CONF_DIR/token)"

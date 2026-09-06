@@ -11,6 +11,13 @@ import sys
 import tempfile
 from typing import Callable
 
+# Support running directly: `python3 god_agent/selftest.py`
+if __name__ == "__main__" and not __package__:
+    _pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _pkg_root not in sys.path:
+        sys.path.insert(0, _pkg_root)
+    __package__ = "god_agent"
+
 
 def _t_policy_blocks_constitution():
     from .policy import Policy, violates_constitution
