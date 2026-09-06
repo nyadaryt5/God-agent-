@@ -44,6 +44,7 @@ def make_cfg(tmp_path):
     cfg = default_config()
     cfg["state"]["root"] = str(tmp_path)
     cfg["memory"]["db_path"] = str(tmp_path / "memory.db")
+    cfg["brain"]["path"] = str(tmp_path / "brain.json")
     cfg["self_model"]["path"] = str(tmp_path / "self.json")
     cfg["audit"]["path"] = str(tmp_path / "audit.jsonl")
     cfg["kill_switch"]["path"] = str(tmp_path / "DISABLED")

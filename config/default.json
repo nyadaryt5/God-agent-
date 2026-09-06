@@ -2,7 +2,7 @@
   "agent": {
     "name": "God-Agent",
     "max_steps": 24,
-    "model": "gpt-4o-mini",
+    "model": "kira-3.5-flash",
     "temperature": 0.2,
     "task_timeout_s": 0,
     "watchdog_interval_s": 60,
@@ -10,10 +10,10 @@
   },
   "llm": {
     "provider": "openai",
-    "api_key_env": "GODA_API_KEY",
+    "api_key_env": "KIRA_API_KEY",
     "api_key": "",
-    "base_url": "",
-    "model": "gpt-4o-mini",
+    "base_url": "https://kiraai.vn/api/v1",
+    "model": "kira-3.5-flash",
     "timeout_s": 120,
     "max_retries": 2
   },

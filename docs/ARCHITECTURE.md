@@ -2,7 +2,7 @@
 
 ```
                        ┌─────────────────────────────┐
-   user / operator ───▶│ CLI (goda)  ·  HTTP API+UI  │
+   user / operator ───▶│ Desktop · CLI · HTTP API/UI │
                        └──────────────┬──────────────┘
                                       │ task
                        ┌──────────────▼──────────────┐
@@ -52,7 +52,10 @@
 | `god_agent.selfmodel` | operational self-model (guarded updates) |
 | `god_agent.evolution` | guarded self-improvement pipeline |
 | `god_agent.audit` | tamper-evident append-only log |
-| `god_agent.api` | HTTP API + dashboard backend |
+| `god_agent.desktop` | native desktop entry point and queued worker controller (no HTTP) |
+| `god_agent.desktop_ui` | lazily imported Tk window, provider settings, task output, approvals |
+| `god_agent.providers` | Kira defaults, custom profiles, local credentials, model discovery |
+| `god_agent.api` | optional HTTP API + dashboard backend |
 | `god_agent.watchdog` | daemon heartbeat + evolution review |
 | `god_agent.cli` | `goda` command line |
 
@@ -64,3 +67,12 @@
   capabilities/notes/lessons)
 - audit.jsonl — hash chain; verify with `goda audit --verify`
 - evolution/ — candidate trees, patches, rollback snapshots
+
+- providers.json — active provider and profiles; optional saved keys use file
+  permissions (`0600`), **not Brain encryption**. Kira environment credentials
+  are resolved at request time and are not copied into this file.
+
+The native desktop calls the same agent/runtime as the CLI, in-process. A
+single worker serializes tasks; an event queue carries progress/results to Tk's
+main thread and native dialogs return policy approval decisions. No browser,
+HTTP listener, or IPC service is involved. See [DESKTOP.md](DESKTOP.md).

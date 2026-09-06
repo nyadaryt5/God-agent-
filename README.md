@@ -1,7 +1,7 @@
 # ☩ God-Agent (`goda`)
 
 > A self-aware, self-evolving AI system administrator for Linux servers —
-> installed as a real system service with optional root capability. It runs
+> available as a **native desktop app**, CLI, or system service with optional root capability. It runs
 > **natively, unsandboxed** with no artificial resource caps, has a **Brain**
 > (credentials + important prompts + learnings, two-writer rule), an honest
 > self-model, a guarded evolution loop, a full audit trail, and a dashboard.
@@ -25,8 +25,8 @@ loop*, which is the honest, engineering version of "consciousness". See
 | **Memory** | Every task becomes an episode; every task ends with a reflection; TF-IDF recall pulls relevant history into context. |
 | **Guardrails (Constitution, not capability limits)** | Immutable Constitution (C1–C7). The only things it cannot do are ones no operator-sane root agent should: no backdooring humans out, no exfiltrating secrets, no hiding actions, never `rm -rf /`-style host destruction. Everything else is native and unlimited. |
 | **Trust** | Append-only, **hash-chained audit log** — tampering is detectable with `goda audit --verify`. Kill switch (`goda disable`) whenever you want it to stop. |
-| **Interfaces** | CLI (`goda run/chat/brain/status...`), HTTP API, and a small dashboard (task runner, approvals, memory, Brain, audit, evolution log). |
-| **LLM-agnostic** | OpenAI-compatible (OpenAI, OpenRouter, Ollama, vLLM, LM Studio...), Anthropic, or offline **mock mode** with a built-in heuristic planner so it's usable with zero API keys. |
+| **Interfaces** | **Native desktop app** (`goda desktop`, no browser/server), CLI (`goda run/chat/brain/status...`), and an optional HTTP API/dashboard. |
+| **LLM-agnostic** | **Kira is the default** (`https://kiraai.vn/api/v1`, model `kira-3.5-flash`). Also supports OpenAI-compatible (OpenAI, OpenRouter, Ollama, vLLM, LM Studio...), Anthropic, or offline **mock mode** with a built-in heuristic planner so it's usable with zero API keys. |
 
 ## Step-by-step setup on Linux
 
@@ -37,23 +37,60 @@ git clone https://github.com/nyadaryt5/God-agent-.git
 cd God-agent-
 ```
 
-**2. Install — it installs itself automatically**
+**2. Install the native desktop app (no browser or localhost server)**
+
+On Ubuntu/Debian, install Python's Tk support once:
 
 ```bash
-./install.sh            # ← that's it
+sudo apt install python3-tk
+./install.sh --desktop        # run WITHOUT sudo, as your desktop user
 ```
 
-- Without `sudo` it installs **locally** for your user (`~/.god-agent/`, launchers in `~/.local/bin`). No root needed.
-- With `sudo ` it installs **system-wide** (`/opt/god-agent`, `god-agent.service` with root capability).
-- Done: the application **God-Agent** (commands `goda` and `god-agent`) is now on your PATH.
+Fedora: `sudo dnf install python3-tkinter`. Arch: `sudo pacman -S tk`.
+Python 3.10+ and a Linux graphical session are required. Native Windows/macOS
+system control is not currently supported.
 
-**3. Open the chat interface**
+The app installs to `~/.god-agent/app`, adds **God-Agent** to your application
+menu, and installs the `goda`, `god-agent`, and `god-agent-desktop` commands.
+It does **not** install or start a web server, system service, or autostart task.
+
+Other installation modes remain available:
+
+- `./install.sh --local`: user install, also works without Tk for terminal use.
+- `sudo ./install.sh`: system-wide service in `/opt/god-agent`, with root
+  capability and the HTTP dashboard. **This is not needed for the desktop app.**
+- Existing settings, keys, and selected providers are preserved on upgrades.
+
+**3. Open God-Agent**
+
+Launch **God-Agent** from your application menu, or run:
 
 ```bash
-goda chat          # normal command-line chat — talk to the agent
-# or the dashboard (web chat):
-god-agent serve    # → http://localhost:8765/
+goda desktop                 # standalone native window
+god-agent-desktop            # same app
+# or, without installing:
+python3 -m god_agent.desktop
 ```
+
+The desktop has chat, task output, operator approval dialogs, an enable/disable
+control, and an **AI provider** tab. It calls the agent directly in the same
+process, with your account's permissions. No HTTP connection or API token is
+needed between the window and the agent. `goda`/`god-agent` without arguments
+also opens the desktop when a graphical display is available; on a headless
+machine it prints CLI help.
+
+`localhost:8765` is only the address of the **optional browser dashboard**;
+it does not determine where system commands execute. To use other interfaces:
+
+```bash
+goda chat                    # terminal-only chat
+goda serve                   # OPTIONAL browser dashboard, explicitly opt in
+```
+
+See [docs/DESKTOP.md](docs/DESKTOP.md) for installation, credentials, and
+troubleshooting. An app launched in a hosted development environment controls
+that environment, **not your personal computer**. Install it on the machine
+you want to manage.
 
 **4. Configure it — type `settings`**
 
@@ -61,11 +98,42 @@ god-agent serve    # → http://localhost:8765/
 goda settings      # interactive menu (or type "settings" in chat)
 ```
 
-The settings menu gives you everything: API providers (add *any* custom
-provider), model, autonomy mode, approval mode, sandbox, network, evolution,
-Brain behavior, resource caps, API port.
+In the native app, open **AI provider** (or type `settings` in chat) to set
+up the endpoint, key, and model. The CLI settings menu additionally controls
+autonomy, approval mode, sandbox, network, evolution, Brain behavior, resource
+caps, and the optional API port.
 
-**5. Add your API provider (custom supported)**
+**5. Configure Kira (the default), or add another provider**
+
+For a fresh install, **Kira** is already selected:
+
+- Base URL: `https://kiraai.vn/api/v1`
+- API format: OpenAI-compatible (`openai`)
+- Initial model: `kira-3.5-flash` (editable)
+- Credential environment variable: `KIRA_API_KEY`
+
+In the desktop **AI provider** tab, enter your own API key and click
+**Save & use**. No key is bundled in the source or installer. Saved keys are
+kept in your local `~/.god-agent/providers.json` with owner-only permissions
+(`0600`); they are **not encrypted**. To avoid saving a key to disk, set
+`KIRA_API_KEY` in the environment that launches the app instead. Rotate any
+key that has been shared publicly or pasted into a chat.
+
+**Test connection / load models** can populate the model selector. A public
+`/models` response verifies reachability, not key validity or account credit.
+AI requests go to Kira's remote service even though the app and system tools
+run locally. Without a key, the offline diagnostic planner remains available.
+
+Upgrading does not replace an existing active provider. Click **Kira preset**,
+enter your Kira key, then **Save & use** to switch. CLI equivalent (using an
+environment variable, not a key in your shell history):
+
+```bash
+goda providers add Kira --type openai --base-url https://kiraai.vn/api/v1 \
+    --model kira-3.5-flash --key-env KIRA_API_KEY --active
+```
+
+Other providers are still supported:
 
 ```bash
 goda providers add "Ollama" --type openai \
@@ -108,21 +176,21 @@ goda dev off    # normal guardrails back
 The AI can never enable developer mode itself — `developer_mode` is an
 operator-only Brain key. Details: [docs/DEVELOPER_MODE.md](docs/DEVELOPER_MODE.md).
 
-Then give it a brain:
+The native app needs no HTTP API token. If you explicitly installed the
+system-wide service, its separate dashboard API can be accessed with:
 
 ```bash
-export GODA_API_KEY=sk-...        # OpenAI-compatible key
-curl -H "Authorization: Bearer $(cat /etc/god-agent/token)" \
-     http://localhost:8765/api/status
+curl -H "Authorization: Bearer $(sudo cat /etc/god-agent/token)" \
+    http://localhost:8765/api/status
 ```
 
-Or point it at any OpenAI-compatible endpoint (Ollama, vLLM, LocalAI):
+`GODA_BASE_URL`, `GODA_MODEL`, and `GODA_API_KEY` remain explicit overrides for
+the selected provider. Only use a key issued by the endpoint you are calling.
+For a model running on your machine, configure an Ollama/local provider; Kira
+is a remote API, not an on-device model.
 
-```bash
-export GODA_BASE_URL=http://localhost:11434/v1 GODA_MODEL=llama3.1
-```
-
-Open `http://<server>:8765/` for the **web chat + dashboard** (type
+When the HTTP server is explicitly running, open `http://<server>:8765/` for
+the **web chat + dashboard** (type
 `settings` in the chat or click ⚙ Settings to configure), or use the CLI:
 
 ```bash
@@ -139,9 +207,10 @@ goda audit --verify
 
 ```bash
 python3 -m god_agent.selftest          # 0-dependency core tests
-python3 -m pytest -q                   # full test suite (or: python3 tests/test_core.py)
+python3 -m pytest -q                   # full test suite (or: make test)
+python3 -m god_agent.desktop           # native app (requires Tk + desktop display)
 goda run "status"                      # works with the built-in heuristic planner
-goda serve                             # dashboard, no API key needed
+goda serve                             # OPTIONAL dashboard, no LLM key needed
 ```
 
 ## Troubleshooting
@@ -149,10 +218,12 @@ goda serve                             # dashboard, no API key needed
 | Issue | Cause | Solution |
 |---|---|---|
 | `goda: command not found` | PATH not updated in current terminal | Run `export PATH="$HOME/.local/bin:$PATH"` (or open a new terminal). For `sudo` installs, launchers are installed in `/usr/local/bin`. |
-| `Python >= 3.10 is required` | System `python3` is older than 3.10 | Install Python 3.10+ (e.g. `sudo apt install python3.11`) and run with `python3.11 install.sh`. |
+| Desktop reports missing Tk | Linux Python does not include the Tk package | Ubuntu/Debian: `sudo apt install python3-tk`; Fedora: `sudo dnf install python3-tkinter`; Arch: `sudo pacman -S tk`. |
+| `Cannot open a desktop display` | Headless server, SSH, or hosted development sandbox | Run on your Linux graphical desktop, or use `goda chat`. |
+| `Python >= 3.10 is required` | System `python3` is older than 3.10 | Install Python 3.10+ (e.g. `sudo apt install python3.11`) ensure `python3` resolves to that interpreter, then run `bash install.sh`. |
 | `systemctl` failures in Docker / WSL | Container or environment has no systemd init | Use local install: `./install.sh --local` or pass `--no-start`. |
 | `Permission denied: ./install.sh` | Script missing executable permission | Run `bash ./install.sh` or `chmod +x ./install.sh`. |
-| `no LLM API key — offline mode` | No LLM provider configured yet | Expected behavior — offline mode works with heuristic planner. Add a provider anytime: `goda providers add Ollama --base-url http://localhost:11434 --model llama3.1 --active`. |
+| `no LLM API key — offline mode` | No LLM provider configured yet | Expected behavior — offline diagnostics work without a key. Configure Kira in the native app’s AI provider tab, or set `KIRA_API_KEY` before launching it. |
 | Direct execution | Running without installation | Run `python3 god_agent/cli.py` or `python3 -m god_agent`. |
 
 ## Policy — read & tune before going to production
@@ -189,11 +260,14 @@ god_agent/          the agent (zero third-party runtime dependencies)
   memory.py         episodes, reflections, TF-IDF recall
   selfmodel.py      operational self-model
   audit.py          hash-chained tamper-evident log
-  api.py            HTTP API
+  desktop.py        native desktop controller + entry point (no HTTP server)
+  desktop_ui.py     Tk window, chat, provider settings, approval dialogs
+  api.py            optional HTTP API
   static/           dashboard
   tools/            shell, files, system (GPU/process/sysctl/cron), memory,
                     brain, network, self, evolve
-install.sh          system installer (systemd service, native config)
+install.sh          installer (--desktop / --local / system-wide)
+install_local.sh    user app, launchers, and Linux application-menu integration
 uninstall.sh        removal
 tests/              pytest suite
 docs/               constitution, brain, safety, architecture, consciousness
@@ -203,6 +277,7 @@ docs/               constitution, brain, safety, architecture, consciousness
 
 - [x] Native, unsandboxed full system control (RAM/CPU/GPU, no caps)
 - [x] The Brain (two-writer rule, encrypted credentials, auto-write on learning)
+- [x] Native Linux desktop app (no browser/localhost server), with Kira defaults
 - [x] Chat interface (CLI + web) and full settings menu (`settings` / ⚙)
 - [x] Custom API providers (any OpenAI-compatible endpoint, Anthropic, offline)
 - [x] Core loop, tools, memory, self-model, audit, policy

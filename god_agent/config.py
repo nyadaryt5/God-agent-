@@ -5,7 +5,8 @@ Config is JSON. Search order:
   2. $GODA_CONFIG
   3. /etc/god-agent/config.json
   4. ~/.config/god-agent/config.json
-  5. ./config/default.json (repo default; kept for development)
+  5. ~/.god-agent/config.json (local/desktop install)
+  6. ./config/default.json (repo default; kept for development)
 Environment variables override individual keys (GODA_*).
 """
 from __future__ import annotations
@@ -15,11 +16,15 @@ import json
 import os
 from typing import Any, Optional
 
+DEFAULT_LLM_BASE_URL = "https://kiraai.vn/api/v1"
+DEFAULT_LLM_MODEL = "kira-3.5-flash"
+DEFAULT_LLM_KEY_ENV = "KIRA_API_KEY"
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "agent": {
         "name": "God-Agent",
         "max_steps": 24,
-        "model": "gpt-4o-mini",
+        "model": DEFAULT_LLM_MODEL,
         "temperature": 0.2,
         "max_context_tokens": 60_000,
         "task_timeout_s": 0,  # 0 = no artificial timeout — full native execution
@@ -28,10 +33,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "llm": {
         "provider": "openai",  # openai | anthropic | mock
-        "api_key_env": "GODA_API_KEY",
+        "api_key_env": DEFAULT_LLM_KEY_ENV,
         "api_key": "",
-        "base_url": "",  # e.g. http://localhost:11434/v1 (Ollama) or OpenRouter
-        "model": "",  # overrides agent.model
+        "base_url": DEFAULT_LLM_BASE_URL,  # OpenAI-compatible Kira endpoint
+        "model": DEFAULT_LLM_MODEL,  # overrides agent.model
         "timeout_s": 120,
         "max_retries": 2,
     },
@@ -94,7 +99,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "tls": False,
     },
     "kill_switch": {"path": "~/.god-agent/DISABLED"},
-    "state": {"root": "~/.god-agent/state", "tasks_dir": "~/.god-agent/tasks"},
+    "state": {"root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks"},
 }
 
 

@@ -7,3 +7,10 @@ dist/
 build/
 .coverage
 .goda/
+
+# Local credentials / overrides (never ship API keys)
+.env
+.env.*
+!.env.example
+/config/local.json
+/providers.json

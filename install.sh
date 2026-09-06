@@ -3,6 +3,7 @@
 #
 #   ./install.sh              # automatic: local (no sudo) OR system-wide if root
 #   sudo ./install.sh         # system-wide: /opt/god-agent + systemd service (root-capable)
+#   ./install.sh --desktop    # native Linux app + application-menu entry (no web service)
 #   ./install.sh --local      # force local install to ~/.god-agent (no root needed)
 #   ./install.sh --user goda  # system-wide as a dedicated user
 #   ./install.sh --no-start   # system-wide, don't start the service
@@ -13,12 +14,20 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_USER="root"
 START="1"
 FORCE_LOCAL="0"
+LOCAL_MODE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --user) RUN_USER="$2"; shift 2 ;;
     --no-start) START="0"; shift ;;
     --local) FORCE_LOCAL="1"; shift ;;
+    --desktop) FORCE_LOCAL="1"; LOCAL_MODE="--desktop"; shift ;;
+    --help|-h)
+      echo "Usage: ./install.sh [--desktop | --local] [--no-start] [--user USER]"
+      echo "  --desktop  native Linux desktop app for the current user; requires Python Tk"
+      echo "  --local    CLI + desktop launcher, no root/system service"
+      echo "  sudo ./install.sh  system-wide service (also starts the optional HTTP dashboard)"
+      exit 0 ;;
     --root) RUN_USER="root"; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -35,8 +44,12 @@ python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev
   exit 1
 }
 
+if [[ "$LOCAL_MODE" == "--desktop" && "$(id -u)" -eq 0 ]]; then
+  echo "error: run ./install.sh --desktop without sudo, from your desktop account" >&2
+  exit 1
+fi
 if [[ "$(id -u)" -ne 0 ]] || [[ "$FORCE_LOCAL" == "1" ]]; then
-  exec bash "$SRC_DIR/install_local.sh" "$SRC_DIR"
+  exec bash "$SRC_DIR/install_local.sh" "$SRC_DIR" "$LOCAL_MODE"
 fi
 
 # ---------------------------------------------------------------- system install
@@ -67,14 +80,15 @@ if [[ ! -f "$TOKEN_FILE" ]]; then
 fi
 TOKEN="$(cat "$TOKEN_FILE")"
 
+if [[ ! -f "$CONF_DIR/config.json" ]]; then
 python3 - "$CONF_DIR/config.json" "$STATE_DIR" "$TOKEN" <<'PY'
 import json, sys
 conf_path, state_dir, token = sys.argv[1:4]
 cfg = {
-  "agent": {"name": "God-Agent", "max_steps": 24, "model": "gpt-4o-mini",
+  "agent": {"name": "God-Agent", "max_steps": 24, "model": "kira-3.5-flash",
             "temperature": 0.2, "task_timeout_s": 0, "watchdog_interval_s": 60},
-  "llm": {"provider": "openai", "api_key_env": "GODA_API_KEY", "api_key": "",
-          "base_url": "", "model": "gpt-4o-mini", "timeout_s": 120, "max_retries": 2},
+  "llm": {"provider": "openai", "api_key_env": "KIRA_API_KEY", "api_key": "",
+          "base_url": "https://kiraai.vn/api/v1", "model": "kira-3.5-flash", "timeout_s": 120, "max_retries": 2},
   "execution": {"memory_limit_mb": -1, "cpu_limit_s": -1, "max_processes": -1,
                 "kill_switch_interval_s": 2},
   "policy": {"autonomy": "autonomous", "approval": "auto", "sandbox": "none",
@@ -94,6 +108,7 @@ cfg = {
 with open(conf_path, "w") as fh:
     json.dump(cfg, fh, indent=2, sort_keys=True)
 PY
+fi
 chmod 600 "$CONF_DIR/config.json" "$TOKEN_FILE"
 
 if [[ "$RUN_USER" != "root" ]]; then
@@ -126,7 +141,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=$RUN_USER
-ExecStart=$PREFIX/god_agent/run_daemon.py
+ExecStart=$(command -v python3) $PREFIX/god_agent/run_daemon.py
 Restart=always
 RestartSec=5
 Environment=GODA_CONFIG=$CONF_DIR/config.json

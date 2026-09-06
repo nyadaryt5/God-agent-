@@ -1,7 +1,7 @@
 """LLM provider adapters (stdlib HTTP only).
 
 Supported providers:
-  openai    — OpenAI-compatible /v1/chat/completions (OpenAI, OpenRouter, Ollama,
+  openai    — OpenAI-compatible /v1/chat/completions (Kira (default), OpenAI, OpenRouter, Ollama,
               LM Studio, vLLM, LocalAI ...). Set GODA_BASE_URL for non-OpenAI hosts.
   anthropic — Anthropic Messages API.
   mock      — deterministic stand-in for tests/offline demo.
@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Optional
 
-from .utils import now_iso
+from .utils import now_iso, redact
 
 
 class LLMError(RuntimeError):
@@ -67,7 +67,10 @@ class OpenAIProvider(LLMClient):
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310 (intended)
                     return resp.read().decode("utf-8")
             except urllib.error.HTTPError as e:
-                detail = e.read().decode("utf-8", "replace")[:500]
+                detail = e.read().decode("utf-8", "replace")
+                if self.api_key:
+                    detail = detail.replace(self.api_key, "***")
+                detail = redact(detail)[:500]
                 last = LLMError(f"HTTP {e.code}: {detail}")
                 if e.code in (400, 401, 403, 404):
                     break
@@ -118,7 +121,7 @@ class AnthropicProvider(LLMClient):
             method="POST",
         )
         opener = OpenAIProvider(  # reuse same retry loop
-            api_key="", model=self.model, base_url=self.base_url, timeout=self.timeout,
+            api_key=self.api_key, model=self.model, base_url=self.base_url, timeout=self.timeout,
             temperature=self.temperature,
         )
         raw = opener._open(req)  # noqa: SLF001 (shared retry helper)
@@ -174,7 +177,7 @@ def get_llm(cfg: dict, mock: Optional[MockLLM] = None) -> LLMClient:
     key = api_key(cfg)
     if not key:
         # No key configured → run fully offline with the deterministic planner
-        # instead of failing. Set GODA_API_KEY (or llm.api_key) to go live.
+        # instead of failing. Set the active profile key (KIRA_API_KEY by default) to go live.
         fallback = MockLLM([], name="offline-heuristic")
         fallback.note = "no LLM API key configured — running with the built-in offline heuristic planner"
         return fallback

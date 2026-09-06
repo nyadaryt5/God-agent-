@@ -20,6 +20,9 @@ dev = ["pytest>=7"]
 goda = "god_agent.cli:main"
 god-agent = "god_agent.cli:main"
 
+[project.gui-scripts]
+god-agent-desktop = "god_agent.desktop:main"
+
 [tool.setuptools.packages.find]
 include = ["god_agent*"]
 

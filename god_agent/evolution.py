@@ -172,9 +172,12 @@ class EvolutionPipeline:
             return {"ok": False, "error": "selftests failed",
                     "output": (res["stdout"] + res["stderr"])[-4000:]}
 
-        # 3. pytest if available
-        if shutil.which("pytest"):
-            res2 = run_command(["pytest", "-q"], timeout=300, cwd=tree)
+        # 3. pytest if available. Its evolution smoke test builds another
+        # candidate: always run that candidate's selftests, but don't recursively
+        # spawn the entire pytest suite again inside it.
+        if shutil.which("pytest") and os.environ.get("GODA_EVOLUTION_TEST") != "1":
+            res2 = run_command(["pytest", "-q"], timeout=300, cwd=tree,
+                               env={"GODA_EVOLUTION_TEST": "1"})
             if res2["exit_code"] != 0:
                 return {"ok": False, "error": "pytest failed",
                         "output": (res2["stdout"] + res2["stderr"])[-4000:]}

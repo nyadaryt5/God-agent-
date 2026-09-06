@@ -50,6 +50,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     run_p.add_argument("--auto", action="store_true", help="auto-approve high-risk actions")
     run_p.add_argument("--no-reflect", action="store_true", help="skip reflection phase")
 
+    sub.add_parser("desktop", help="open the native desktop app (no web server)")
     sub.add_parser("chat", help="interactive REPL")
     sub.add_parser("serve", help="start the HTTP API + dashboard")
     sub.add_parser("daemon", help="run the watchdog loop (used by systemd)")
@@ -133,8 +134,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     console = Console()
     if not args.cmd:
-        p.print_help()
-        return 0
+        if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+            args.cmd = "desktop"
+        else:
+            p.print_help()
+            return 0
 
     try:
         if args.cmd == "init":
@@ -146,6 +150,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     except Exception as e:  # noqa: BLE001
         console.error(f"config error: {e}")
         return 1
+
+    if args.cmd == "desktop":
+        from .desktop import launch
+        return launch(cfg)
 
     if args.cmd in ("run", "chat", "serve", "daemon", "status", "doctor", "memory",
                     "audit", "self", "evolve", "brain", "disable", "enable",
@@ -213,7 +221,7 @@ def _cmd_init(args, console) -> int:
     console.ok(f"initialized state in {root}")
     console.info("api token (keep safe):")
     print("  " + cfg["api"]["token"])
-    console.info("next: edit ~/.god-agent/config.json, then `goda serve`")
+    console.info("next: `goda desktop` for the native app, or `goda chat` for terminal chat")
     return 0
 
 
