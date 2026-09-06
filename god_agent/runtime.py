@@ -13,7 +13,7 @@ from typing import Callable, Optional
 
 from .audit import AuditLog
 from .brain import Brain
-from .config import load_config
+from .config import load_config, _env_overrides
 from .executor import Executor
 from .memory import MemoryStore
 from .policy import Policy, Decision
@@ -37,6 +37,7 @@ class Runtime:
         providers_path = os.path.join(self.cfg["state"]["root"], "providers.json")
         self.providers = ProviderManager(providers_path)
         self.providers.apply_to(self.cfg)
+        _env_overrides(self.cfg)  # explicit GODA_* overrides win over profiles
         self.memory = MemoryStore(
             self.cfg["memory"]["db_path"],
             self.cfg["memory"]["max_episodes"],
@@ -81,8 +82,11 @@ class Runtime:
     def reload(self) -> None:
         """Re-read providers + dev mode and rebuild policy after a change."""
         self.providers.apply_to(self.cfg)
+        _env_overrides(self.cfg)  # explicit GODA_* overrides win over profiles
         self._load_dev_mode()
         self.policy = Policy(self.cfg, dev_mode=self.dev_mode)
+        self.registry.policy = self.policy
+        self.executor.sandbox = self.cfg["policy"].get("sandbox", "none")
         self._sync_capabilities()
 
     def _sync_capabilities(self) -> None:

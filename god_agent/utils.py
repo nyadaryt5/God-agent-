@@ -59,6 +59,7 @@ def redact(text: str) -> str:
     patterns = [
         (re.compile(r"(api[_-]?key|token|secret|password|authorization)\s*[=:]\s*\S+", re.I), r"\1=***"),
         (re.compile(r"sk-[A-Za-z0-9_\-]{12,}"), "sk-***"),
+        (re.compile(r"kira_[A-Za-z0-9_\-]{12,}"), "kira_***"),
         (re.compile(r"(AKIA|ASIA)[A-Z0-9]{16}"), "***"),
         (re.compile(r"Bearer\s+[A-Za-z0-9._\-]+"), "Bearer ***"),
     ]

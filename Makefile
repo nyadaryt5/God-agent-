@@ -1,11 +1,17 @@
 # God-Agent convenience targets
-.PHONY: install local chat serve status settings providers test selftest clean
+.PHONY: install local desktop desktop-install chat serve status settings providers test selftest clean
 
 install:            ## install system-wide (sudo, root-capable service)
 	./install.sh
 
 local:              ## install for the current user (no sudo)
 	./install.sh --local
+
+desktop-install:    ## native desktop install for this user (requires Tk)
+	./install.sh --desktop
+
+desktop:            ## standalone desktop window; no browser / HTTP server
+	python3 -m god_agent.desktop
 
 chat:               ## normal chat interface
 	python3 -m god_agent.cli chat
@@ -25,6 +31,7 @@ providers:          ## list/switch API providers
 test:               ## run all tests (selftest + test_core)
 	python3 -m god_agent.selftest
 	python3 tests/test_core.py
+	python3 -m unittest discover -s tests -p 'test_*.py'
 
 selftest:           ## run zero-dependency selftests
 	python3 -m god_agent.selftest
