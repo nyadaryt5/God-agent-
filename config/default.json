@@ -79,6 +79,32 @@
       "max_requests_per_minute": 30
     }
   },
+  "search": {
+    "enabled": true,
+    "backend": "duckduckgo",
+    "api_key": "",
+    "base_url": "",
+    "max_results": 8,
+    "max_snippet_chars": 400,
+    "timeout_s": 20,
+    "safe_search": true
+  },
+  "media": {
+    "enabled": true,
+    "base_url": "",
+    "api_key": "",
+    "vision_model": "",
+    "image_model": "gpt-image-1",
+    "image_size": "1024x1024",
+    "speech_model": "tts-1",
+    "speech_voice": "alloy",
+    "speech_format": "mp3",
+    "output_dir": "",
+    "max_image_mb": 20,
+    "play_audio": false,
+    "max_prompt_chars": 4000,
+    "timeout_s": 180
+  },
   "kill_switch": { "path": "~/.god-agent/DISABLED" },
   "state": { "root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks" }
 }

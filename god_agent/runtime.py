@@ -114,6 +114,8 @@ class Runtime:
             "scheduling": True,
             "self_model": True,
             "browser": network_on and self._playwright_available(),
+            "search": network_on and bool(self.cfg.get("search", {}).get("enabled", True)),
+            "vision": network_on and bool(self.cfg.get("media", {}).get("enabled", True)),
             "evolution": bool(self.cfg["policy"]["evolution"].get("enabled", True)),
             "native": self.cfg["policy"].get("sandbox", "none") == "none",
             "developer_mode": self.dev_mode,

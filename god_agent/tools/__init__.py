@@ -60,6 +60,7 @@ class ToolRegistry:
     def _register_all(self) -> None:
         from . import brain, files, memory, network, selfmodel, shell, system
         from . import browser as _browser
+        from . import search as _search, media as _media
         from ..evolution import evolve
 
         TOOL_META = {
@@ -182,6 +183,28 @@ class ToolRegistry:
                                              {}),
             _browser.browser_close: ("Close the browser and save cookies/session to disk.",
                                      {}),
+            # -- research + modalities (what a general agent can do) ---------
+            _search.web_search: ("Search the web. Returns titles, URLs, and snippets. Use it to "
+                                 "answer 'why does X happen' questions, find documentation, or "
+                                 "discover a URL before opening it in the browser.",
+                                 {"query": {"type": "string", "required": True},
+                                  "max_results": {"type": "integer", "default": 8}}),
+            _media.image_analyze: ("Look at an image and describe or interpret it. This is how "
+                                   "you read a browser_screenshot: screenshot a page, then "
+                                   "analyze it. Also reads diagrams, charts, and error dialogs.",
+                                   {"path": {"type": "string", "required": True},
+                                    "question": {"type": "string"}}),
+            _media.image_generate: ("Generate an image from a text prompt and save it to disk. "
+                                    "Use for architecture diagrams and network topologies.",
+                                    {"prompt": {"type": "string", "required": True},
+                                     "size": {"type": "string"}}),
+            _media.speak: ("Convert text to speech and save an audio file. Use for audible "
+                           "alerts: 'disk critical on db-01'.",
+                           {"text": {"type": "string", "required": True},
+                            "voice": {"type": "string"},
+                            "format": {"type": "string",
+                                       "enum": ["mp3", "opus", "aac", "flac", "wav", "pcm"]},
+                            "play": {"type": "boolean", "default": False}}),
             evolve: ("Evolve yourself: propose validated, tested changes to your own source.",
                      {"proposal": {"type": "object", "required": True}}),
         }

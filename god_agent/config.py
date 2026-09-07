@@ -154,6 +154,37 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "max_requests_per_minute": 30,
         },
     },
+    # Web search. The default backend (DuckDuckGo HTML) needs no API key, so
+    # this works out of the box; supply a key to switch to a real search API.
+    "search": {
+        "enabled": True,
+        "backend": "duckduckgo",   # duckduckgo | brave | tavily | searxng | mock
+        "api_key": "",             # brave/tavily only
+        "base_url": "",            # searxng only
+        "max_results": 8,
+        "max_snippet_chars": 400,
+        "timeout_s": 20,
+        "safe_search": True,
+    },
+    # Vision / image generation / speech. Built on the same OpenAI-compatible
+    # endpoint as `llm`, so nothing extra to install. Leave base_url/api_key
+    # empty to inherit from the `llm` section.
+    "media": {
+        "enabled": True,
+        "base_url": "",            # empty = llm.base_url
+        "api_key": "",             # empty = llm api key
+        "vision_model": "",        # empty = llm.model (must be vision-capable)
+        "image_model": "gpt-image-1",
+        "image_size": "1024x1024",
+        "speech_model": "tts-1",
+        "speech_voice": "alloy",
+        "speech_format": "mp3",
+        "output_dir": "",          # empty = <state.root>/media
+        "max_image_mb": 20,
+        "play_audio": False,       # attempt local playback after synthesizing
+        "max_prompt_chars": 4000,
+        "timeout_s": 180,
+    },
     "kill_switch": {"path": "~/.god-agent/DISABLED"},
     "state": {"root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks"},
 }

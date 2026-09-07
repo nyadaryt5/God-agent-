@@ -29,6 +29,10 @@ loop*, which is the honest, engineering version of "consciousness". See
 | **Guardrails (Constitution, not capability limits)** | Immutable Constitution (C1–C7). The only things it cannot do are ones no operator-sane root agent should: no backdooring humans out, no exfiltrating secrets, no hiding actions, never `rm -rf /`-style host destruction. Everything else is native and unlimited. |
 | **Trust** | Append-only, **hash-chained audit log** — tampering is detectable with `goda audit --verify`. Kill switch (`goda disable`) whenever you want it to stop. |
 | **Interfaces** | **Native desktop app** (`goda desktop`, no browser/server), CLI (`goda run/chat/brain/status...`), and an optional HTTP API/dashboard. |
+| **Web search** | `web_search` returns titles, URLs, and snippets. Works **out of the box with no API key** (DuckDuckGo), or point it at Brave, Tavily, or a self-hosted SearXNG. Turns "why does nginx throw 502" into an answer instead of a guessed URL. |
+| **Vision** | `image_analyze` actually *looks* at an image. This is what makes `browser_screenshot` useful: capture a page, then read it. Also reads diagrams, charts, and error dialogs. |
+| **Image generation** | `image_generate` produces diagrams and graphics from a prompt — architecture diagrams, network topologies. |
+| **Speech** | `speak` turns text into an audio file. A monitoring agent that says "disk critical on db-01" beats one that writes another log line; set `media.play_audio` to hear it. |
 | **LLM-agnostic** | **Kira is the default** (`https://kiraai.vn/api/v1`, model `kira-3.5-flash`). Also supports OpenAI-compatible (OpenAI, OpenRouter, Ollama, vLLM, LM Studio...), Anthropic, or offline **mock mode** with a built-in heuristic planner so it's usable with zero API keys. |
 
 ## Step-by-step setup on Linux
@@ -435,6 +439,101 @@ unaffected.
 > *tools* inside the normal loop — they compose with shell, files, and the
 > Brain, and they run headless on a server.
 
+## Search, vision, image generation, and speech
+
+A sysadmin agent with only a shell is missing what a general-purpose agent can
+do: look things up, see images, draw diagrams, and speak. Four tools close
+that gap — and like everything else, they are policy-graded and audited.
+
+```bash
+goda run "search for why nginx returns 502 and summarise the fix"
+goda run "screenshot the status page and tell me what it shows"
+goda run "generate a diagram of our three-tier network topology"
+goda run "check disk space and speak an alert if anything is over 90%"
+```
+
+### Web search
+
+Works **with zero configuration** — the default DuckDuckGo backend needs no API
+key. Upgrade to a real search API when you want better results:
+
+| Backend | Needs | Notes |
+|---|---|---|
+| `duckduckgo` | nothing | default; scrapes the HTML endpoint |
+| `brave` | `search.api_key` | Brave Search API |
+| `tavily` | `search.api_key` | Tavily Search API |
+| `searxng` | `search.base_url` | self-hosted SearXNG |
+| `mock` | nothing | offline stub for tests/demos |
+
+Search composes with the browser tools: search to discover, then
+`browser_open` / `browser_extract` to read.
+
+```jsonc
+"search": {
+  "enabled": true,
+  "backend": "duckduckgo",   // duckduckgo | brave | tavily | searxng | mock
+  "api_key": "", "base_url": "",
+  "max_results": 8, "timeout_s": 20, "safe_search": true
+}
+```
+
+### Vision, images, and speech
+
+These ride the **same OpenAI-compatible endpoint** God-Agent already uses for
+chat, so there is nothing new to install and no new dependency:
+
+| Tool | API surface |
+|---|---|
+| `image_analyze` | `POST /chat/completions` (multimodal message) |
+| `image_generate` | `POST /images/generations` |
+| `speak` | `POST /audio/speech` |
+
+Leave `media.base_url` and `media.api_key` empty to inherit from the `llm`
+section; set them to point these somewhere else. If your provider does not
+implement one of those surfaces you get a clear "does not implement" error
+rather than a stack trace.
+
+**Vision is the missing half of `browser_screenshot`.** The browser toolset
+could capture a page but not read one — the agent was screenshotting pages it
+could not see. Now:
+
+```bash
+goda run "open https://example.com, screenshot it, and describe what you see"
+```
+
+**Privacy:** `image_analyze` uploads the image to the configured endpoint. For
+a dashboard screenshot containing credentials, that means sending it to a third
+party. It only runs when called, it is audited, and it dies with
+`policy.network.enabled`.
+
+```jsonc
+"media": {
+  "enabled": true,
+  "base_url": "",           // empty = llm.base_url
+  "api_key": "",            // empty = llm api key
+  "vision_model": "",       // empty = llm.model (must be vision-capable)
+  "image_model": "gpt-image-1", "image_size": "1024x1024",
+  "speech_model": "tts-1", "speech_voice": "alloy", "speech_format": "mp3",
+  "output_dir": "",         // empty = <state.root>/media
+  "max_image_mb": 20, "play_audio": false
+}
+```
+
+Generated images and audio are written to `output_dir`
+(`~/.god-agent/media` by default) and the path is returned, so the agent can
+hand it to the next step.
+
+### Risk grades
+
+| Tool | Risk | Why |
+|---|---|---|
+| `web_search` | 3 | outbound network, like `fetch_url` |
+| `image_analyze` | 3 | uploads a file to a third party |
+| `image_generate` | 3 | outbound network + spend |
+| `speak` | 2 | local output, but text goes to a remote TTS endpoint |
+
+All four are gated by `policy.network.enabled`.
+
 ## Troubleshooting
 
 | Issue | Cause | Solution |
@@ -455,6 +554,11 @@ unaffected.
 | `ERROR: disallowed by .../robots.txt` | The site opts out of automated access | Confirm you are permitted to automate it, then set `browser.polite.robots_txt=false`. |
 | `ERROR: rate limit reached for <host>` | More than `max_requests_per_minute` in a minute | Wait, or raise `browser.polite.max_requests_per_minute`. |
 | Typing is very slow | Humanized keystroke delay | Lower `browser.stealth.humanize.typing_delay_ms`, or set `humanize.enabled=false`. |
+| `ERROR: search is disabled` | `search.enabled` is false | Set `goda settings search.enabled true`. |
+| `ERROR: brave backend needs search.api_key` | Keyed backend with no key | Supply `search.api_key`, or switch to the keyless `duckduckgo` backend. |
+| `ERROR: this provider does not implement /images/generations` | Endpoint lacks that surface | Point `media.base_url` at a provider that offers it. |
+| `ERROR: no API key configured` (media) | No chat key set | Set the LLM key (`KIRA_API_KEY` by default) or `media.api_key` explicitly. |
+| `image_analyze` returns "no description" | Model is not vision-capable | Set `media.vision_model` to a multimodal model. |
 
 ## Policy — read & tune before going to production
 
@@ -503,7 +607,8 @@ god_agent/          the agent (zero third-party runtime dependencies for the
   static/           dashboard
   tools/            shell, files, system (GPU/process/sysctl/cron), memory,
                     brain, network, browser (headless Chromium), stealth
-                    (anti-bot-detection), self, evolve
+                    (anti-bot-detection), search (web), media (vision/image/
+                    speech), self, evolve
 install.sh          installer (--desktop / --local / system-wide)
 install_local.sh    user app, launchers, and Linux application-menu integration
 uninstall.sh        removal
@@ -529,6 +634,7 @@ docs/               constitution, brain, safety, architecture, consciousness
 - [x] MCP client (connect external agent/tool servers: stdio, SSE, streamable-HTTP)
 - [x] Real browser automation (headless Chromium: JS, cookies, sessions; policy-graded + audited)
 - [x] Anti-bot-detection hardening (consistent device profiles, humanized input, `browser_stealth_check` verification)
+- [x] Web search (keyless DuckDuckGo default + Brave/Tavily/SearXNG), vision, image generation, speech
 - [ ] Real-time alert rules (thresholds on metrics)
 - [ ] Vault/KMS integration for Brain credentials
 

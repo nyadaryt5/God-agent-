@@ -253,6 +253,48 @@ def _t_browser_tools_registered_and_gated():
         assert prof["screen"]["height"] >= 720
 
 
+def _t_search_and_media_tools_graded():
+    """Web search / vision / image / speech must be graded and network-gated.
+
+    Dependency-free and offline: it exercises the DuckDuckGo URL unwrapper
+    (pure string handling) and the mock search backend, never the network.
+    """
+    from .config import default_config
+    from .policy import Policy, TOOL_RISK, NETWORK_TOOLS
+
+    names = ["web_search", "image_analyze", "image_generate", "speak"]
+    for n in names:
+        assert n in TOOL_RISK, f"{n} is ungraded — it would bypass risk policy"
+        assert n in NETWORK_TOOLS, f"{n} escapes the network gate"
+
+    off = default_config()
+    off["policy"]["network"]["enabled"] = False
+    p = Policy(off)
+    for n in names:
+        assert not p.assess(n, {}).allowed, f"{n} survives network.enabled=false"
+
+    # DuckDuckGo wraps results in a redirect; unwrapping is pure string work.
+    from .tools.search import _clean_ddg_url
+
+    assert _clean_ddg_url("") == ""
+    assert _clean_ddg_url("https://x.test/a") == "https://x.test/a"
+    assert _clean_ddg_url(
+        "//duckduckgo.com/l/?uddg=https%3A%2F%2Fx.test%2Fp") == "https://x.test/p"
+
+    # The no-key default backend must work with nothing configured.
+    from .tools.search import search
+
+    conf = {"backend": "mock", "max_results": 5, "timeout_s": 5}
+    assert len(search("anything", conf)) > 0
+
+    cfg = default_config()
+    assert cfg["search"]["backend"] == "duckduckgo"  # works without an API key
+    assert cfg["media"]["enabled"] is True
+    # Media inherits the chat endpoint rather than demanding its own.
+    assert cfg["media"]["base_url"] == ""
+    assert cfg["media"]["api_key"] == ""
+
+
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("policy blocks constitution violation", _t_policy_blocks_constitution),
     ("policy risk grading", _t_policy_risk_grading),
@@ -269,6 +311,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("developer mode: no refusals", _t_developer_mode_no_refusals),
     ("developer mode: operator-only", _t_developer_mode_operator_only),
     ("browser tools graded + network-gated", _t_browser_tools_registered_and_gated),
+    ("search + media tools graded + gated", _t_search_and_media_tools_graded),
 ]
 
 

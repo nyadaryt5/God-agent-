@@ -72,6 +72,14 @@ TOOL_RISK: dict[str, int] = {
     "browser_eval": 5,
     "browser_stealth_check": 1,
     "browser_close": 1,
+    # -- research + modalities -------------------------------------------
+    # Search is ordinary web reading. Uploading an image (image_analyze) and
+    # spending money on generation are one notch up. Speech is local output,
+    # but it does send the text to a remote TTS endpoint.
+    "web_search": 3,
+    "image_analyze": 3,
+    "image_generate": 3,
+    "speak": 2,
     "evolve": 6,
     "run_plan": 2,
 }
@@ -81,7 +89,8 @@ TOOL_RISK: dict[str, int] = {
 # the same gate automatically.
 NETWORK_TOOLS = {"fetch_url", "browser_open", "browser_click", "browser_type",
                  "browser_extract", "browser_links", "browser_wait",
-                 "browser_screenshot", "browser_eval"}
+                 "browser_screenshot", "browser_eval",
+                 "web_search", "image_analyze", "image_generate", "speak"}
 
 # Browser tools that only act on an already-open page: no network of their own.
 # They stay available when network is switched off — closing must never be
