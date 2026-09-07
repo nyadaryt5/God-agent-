@@ -59,9 +59,61 @@ TOOL_RISK: dict[str, int] = {
     "system_tune": 4,
     "schedule_job": 4,
     "fetch_url": 3,
+    # -- browser (real headless Chromium) ---------------------------------
+    # Navigation and clicking are ordinary web activity; typing is graded
+    # higher because it is how credentials and form data get submitted.
+    "browser_open": 3,
+    "browser_click": 3,
+    "browser_type": 4,
+    "browser_extract": 1,
+    "browser_links": 1,
+    "browser_wait": 1,
+    "browser_screenshot": 2,
+    "browser_eval": 5,
+    "browser_stealth_check": 1,
+    "browser_close": 1,
+    # -- research + modalities -------------------------------------------
+    # Search is ordinary web reading. Uploading an image (image_analyze) and
+    # spending money on generation are one notch up. Speech is local output,
+    # but it does send the text to a remote TTS endpoint.
+    "web_search": 3,
+    "image_analyze": 3,
+    "image_generate": 3,
+    "speak": 2,
+    # -- documents + image editing ----------------------------------------
+    # Reading a document outline is harmless; everything that writes to disk
+    # is a 3, matching write_file.
+    "doc_create": 3,
+    "doc_add_heading": 2,
+    "doc_add_text": 2,
+    "doc_add_code": 2,
+    "doc_add_image": 2,
+    "doc_add_quote": 2,
+    "doc_add_page_break": 2,
+    "doc_outline": 1,
+    "doc_edit": 3,
+    "doc_remove": 3,
+    "doc_render": 2,
+    "image_info": 1,
+    "image_edit": 3,
+    "image_compose": 3,
     "evolve": 6,
     "run_plan": 2,
 }
+
+# Tools that reach the network and are therefore governed by
+# policy.network.enabled. Kept as a set so browser tools added later inherit
+# the same gate automatically.
+NETWORK_TOOLS = {"fetch_url", "browser_open", "browser_click", "browser_type",
+                 "browser_extract", "browser_links", "browser_wait",
+                 "browser_screenshot", "browser_eval",
+                 "web_search", "image_analyze", "image_generate", "speak"}
+
+# Browser tools that only act on an already-open page: no network of their own.
+# They stay available when network is switched off — closing must never be
+# blocked (it would leak the browser process) and a local integrity probe
+# touches nothing remote.
+LOCAL_BROWSER_TOOLS = {"browser_close", "browser_stealth_check"}
 
 # Commands that always require a human (or sovereign autonomy).
 ALWAYS_ASK_PATTERNS = [
@@ -245,10 +297,10 @@ class Policy:
                 reasons += rr
         elif tool == "evolve":
             reasons.append("self-modification")
-        elif tool == "fetch_url":
+        elif tool in NETWORK_TOOLS:
             if not self.cfg["policy"]["network"].get("enabled") and not self.dev_mode:
                 return Decision(False, risk, RISK_LEVELS[risk], "network disabled in policy", False)
-            reasons.append("network fetch")
+            reasons.append("network fetch" if tool == "fetch_url" else "browser automation")
 
         return self._decide(risk, reasons, tool, args)
 

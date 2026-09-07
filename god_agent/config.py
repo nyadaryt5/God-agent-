@@ -111,6 +111,98 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model": "",
         "api_key": "",
     },
+    # Real browser automation (Playwright + headless Chromium). Optional: the
+    # browser tools return a clear install hint when Playwright is absent.
+    # Install with: pip install 'god-agent[browser]' && playwright install chromium
+    "browser": {
+        "headless": True,          # False shows a visible window (needs a display)
+        "timeout_s": 30,           # per-action / navigation timeout
+        "max_text_chars": 200_000, # cap on extracted text returned to the model
+        "viewport": {"width": 1280, "height": 900},
+        "user_agent": "",          # empty = use the stealth profile's UA
+        "allow_js": True,          # browser_eval escape hatch; disable to lock it down
+        "state_path": "",          # empty = <state.root>/browser_state.json (cookies/session)
+        # Anti-bot-detection hardening (see god_agent/tools/stealth.py).
+        # Defeats passive fingerprinting: navigator.webdriver, missing
+        # window.chrome, HeadlessChrome UA, cdc_ markers, software WebGL,
+        # Client-Hints mismatch, and the missing browser-chrome offset.
+        # It does NOT solve CAPTCHAs and does not rotate proxies/identities.
+        "stealth": {
+            "enabled": True,
+            "profile": "windows-chrome",  # windows-chrome | macos-chrome | linux-chrome
+            "locale": "en-US",
+            "timezone": "",               # empty = the profile's default
+            "webgl_vendor": "",           # empty = the profile's default
+            "webgl_renderer": "",         # empty = the profile's default
+            "humanize": {
+                "enabled": True,
+                "typing_delay_ms": [40, 130],  # random per-keystroke delay
+                "mouse_steps": [8, 25],        # intermediate cursor move steps
+                "pause_ms": [300, 1200],       # idle between actions
+            },
+        },
+        # A single static proxy (corporate egress, geo-testing, your own exit
+        # IP). Deliberately not a rotation pool.
+        "proxy": {"server": "", "username": "", "password": "", "bypass": ""},
+        # Being a good citizen. Independent of stealth: looking like a human
+        # browser is not a licence to hammer someone's server.
+        "polite": {
+            "enabled": True,
+            "robots_txt": True,             # honour Disallow rules
+            "user_agent_token": "GodAgent", # which robots.txt group we match
+            "min_delay_ms": 1000,           # minimum gap between requests/host
+            "max_requests_per_minute": 30,
+        },
+    },
+    # Web search. The default backend (DuckDuckGo HTML) needs no API key, so
+    # this works out of the box; supply a key to switch to a real search API.
+    "search": {
+        "enabled": True,
+        "backend": "duckduckgo",   # duckduckgo | brave | tavily | searxng | mock
+        "api_key": "",             # brave/tavily only
+        "base_url": "",            # searxng only
+        "max_results": 8,
+        "max_snippet_chars": 400,
+        "timeout_s": 20,
+        "safe_search": True,
+    },
+    # Vision / image generation / speech. Built on the same OpenAI-compatible
+    # endpoint as `llm`, so nothing extra to install. Leave base_url/api_key
+    # empty to inherit from the `llm` section.
+    "media": {
+        "enabled": True,
+        "base_url": "",            # empty = llm.base_url
+        "api_key": "",             # empty = llm api key
+        "vision_model": "",        # empty = llm.model (must be vision-capable)
+        "image_model": "gpt-image-1",
+        "image_size": "1024x1024",
+        "speech_model": "tts-1",
+        "speech_voice": "alloy",
+        "speech_format": "mp3",
+        "output_dir": "",          # empty = <state.root>/media
+        "max_image_mb": 20,
+        "play_audio": False,       # attempt local playback after synthesizing
+        "max_prompt_chars": 4000,
+        "timeout_s": 180,
+    },
+    # Documents: an ordered block model (heading/text/code/quote/image) that
+    # renders to md, html, pdf, or docx. md/html need nothing; pdf reuses the
+    # headless Chromium; docx needs the optional python-docx extra.
+    "docs": {
+        "enabled": True,
+        "default_format": "md",      # md | html | pdf | docx
+        "embed_images": True,        # base64-embed images so output is one file
+        "pdf_format": "A4",
+        "max_image_mb": 25,          # cap on a single embedded image
+        "output_dir": "",            # empty = render next to the document
+    },
+    # Image editing (Pillow) — resize/crop/rotate/compose before embedding.
+    "imaging": {
+        "enabled": True,
+        "max_image_mb": 25,
+        "jpeg_quality": 90,
+        "default_format": "png",
+    },
     "kill_switch": {"path": "~/.god-agent/DISABLED"},
     "state": {"root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks"},
 }

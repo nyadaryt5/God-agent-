@@ -191,6 +191,179 @@ def _t_custom_provider_managable():
         assert pm.remove("My Custom")
 
 
+def _t_browser_tools_registered_and_gated():
+    """Browser tools must be risk-graded and honour the network kill switch.
+
+    Deliberately dependency-free: it never launches a browser, so it stays
+    valid on a fresh server with no Playwright installed.
+    """
+    from .config import default_config
+    from .policy import Policy, TOOL_RISK, NETWORK_TOOLS, LOCAL_BROWSER_TOOLS
+
+    names = ["browser_open", "browser_click", "browser_type", "browser_extract",
+             "browser_links", "browser_wait", "browser_screenshot",
+             "browser_eval", "browser_stealth_check", "browser_close"]
+    for n in names:
+        assert n in TOOL_RISK, f"{n} is ungraded — it would bypass risk policy"
+
+    # Reading a page is benign; submitting data and running JS are not.
+    assert TOOL_RISK["browser_extract"] <= 1
+    assert TOOL_RISK["browser_type"] >= 4
+    assert TOOL_RISK["browser_eval"] >= 5
+
+    # Everything that touches the network dies with the kill switch...
+    off = default_config()
+    off["policy"]["network"]["enabled"] = False
+    p = Policy(off)
+    for n in names:
+        if n in LOCAL_BROWSER_TOOLS:
+            continue
+        assert not p.assess(n, {"url": "https://example.com"}).allowed, \
+            f"{n} survives network.enabled=false"
+
+    # ...except close (local cleanup; blocking it leaks the browser process)
+    # and stealth_check (a local integrity probe that touches nothing remote).
+    for n in LOCAL_BROWSER_TOOLS:
+        assert n not in NETWORK_TOOLS, f"{n} is gated but must stay available"
+        assert p.assess(n, {}).allowed, f"{n} refused with network off"
+
+    cfg = default_config()
+    assert cfg["browser"]["headless"] is True
+    assert cfg["browser"]["allow_js"] is True
+    assert cfg["browser"]["stealth"]["enabled"] is True
+    assert cfg["browser"]["polite"]["robots_txt"] is True
+
+    # Stealth profiles must be internally consistent: a UA claiming one OS
+    # while Client Hints reports another is more suspicious than no patch.
+    from .tools import stealth
+
+    for pname in ("windows-chrome", "macos-chrome", "linux-chrome"):
+        prof = stealth.get_profile(pname)
+        ua, platform = prof["user_agent"], prof["ua_data_platform"]
+        if "Windows" in ua:
+            assert platform == "Windows", pname
+        elif "Macintosh" in ua:
+            assert platform == "macOS", pname
+        else:
+            assert platform == "Linux", pname
+        assert "Headless" not in ua, f"{pname} UA advertises headless"
+        assert "SwiftShader" not in prof["webgl_renderer"], f"{pname} uses a software renderer"
+        assert prof["hardware_concurrency"] >= 2
+        # The window must fit inside the screen, or the geometry check fails.
+        assert prof["screen"]["height"] >= 720
+
+
+def _t_search_and_media_tools_graded():
+    """Web search / vision / image / speech must be graded and network-gated.
+
+    Dependency-free and offline: it exercises the DuckDuckGo URL unwrapper
+    (pure string handling) and the mock search backend, never the network.
+    """
+    from .config import default_config
+    from .policy import Policy, TOOL_RISK, NETWORK_TOOLS
+
+    names = ["web_search", "image_analyze", "image_generate", "speak"]
+    for n in names:
+        assert n in TOOL_RISK, f"{n} is ungraded — it would bypass risk policy"
+        assert n in NETWORK_TOOLS, f"{n} escapes the network gate"
+
+    off = default_config()
+    off["policy"]["network"]["enabled"] = False
+    p = Policy(off)
+    for n in names:
+        assert not p.assess(n, {}).allowed, f"{n} survives network.enabled=false"
+
+    # DuckDuckGo wraps results in a redirect; unwrapping is pure string work.
+    from .tools.search import _clean_ddg_url
+
+    assert _clean_ddg_url("") == ""
+    assert _clean_ddg_url("https://x.test/a") == "https://x.test/a"
+    assert _clean_ddg_url(
+        "//duckduckgo.com/l/?uddg=https%3A%2F%2Fx.test%2Fp") == "https://x.test/p"
+
+    # The no-key default backend must work with nothing configured.
+    from .tools.search import search
+
+    conf = {"backend": "mock", "max_results": 5, "timeout_s": 5}
+    assert len(search("anything", conf)) > 0
+
+    cfg = default_config()
+    assert cfg["search"]["backend"] == "duckduckgo"  # works without an API key
+    assert cfg["media"]["enabled"] is True
+    # Media inherits the chat endpoint rather than demanding its own.
+    assert cfg["media"]["base_url"] == ""
+    assert cfg["media"]["api_key"] == ""
+
+
+def _t_docs_and_imaging_graded():
+    """Document + image tools must be graded; markdown rendering is pure.
+
+    Renders a document from an in-memory block list, so it needs no Pillow,
+    no python-docx, and no filesystem.
+    """
+    from .config import default_config
+    from .policy import TOOL_RISK
+    from .tools import docs as D
+
+    names = ["doc_create", "doc_add_heading", "doc_add_text", "doc_add_code",
+             "doc_add_image", "doc_add_quote", "doc_add_page_break",
+             "doc_outline", "doc_edit", "doc_remove", "doc_render",
+             "image_info", "image_edit", "image_compose"]
+    for n in names:
+        assert n in TOOL_RISK, f"{n} is ungraded — it would bypass risk policy"
+
+    # Anything that writes to disk is a 3; pure reads are a 1.
+    assert TOOL_RISK["doc_outline"] == 1
+    assert TOOL_RISK["image_info"] == 1
+    for n in ("doc_create", "doc_edit", "doc_remove", "image_edit", "image_compose"):
+        assert TOOL_RISK[n] == 3, f"{n} writes to disk but is graded {TOOL_RISK[n]}"
+
+    # Path normalisation: name and name.gdoc.json must be one document.
+    j1, a1 = D._paths("/tmp/report")
+    j2, a2 = D._paths("/tmp/report.gdoc.json")
+    assert j1 == j2 and a1 == a2
+
+    # Markdown rendering is a pure function of the block list.
+    doc = {
+        "title": "T",
+        "blocks": [
+            {"kind": "heading", "level": 2, "text": "H"},
+            {"kind": "text", "text": "body"},
+            {"kind": "code", "text": "df -h", "language": "bash"},
+            {"kind": "image", "path": "s.png", "caption": "cap", "alt": "alt"},
+            {"kind": "quote", "text": "quoted"},
+            {"kind": "page_break", "text": ""},
+        ],
+    }
+    md = D.render_markdown(doc, "/tmp/report.assets", embed=False)
+    assert md.startswith("# T")
+    assert "## H" in md
+    assert "```bash" in md and "df -h" in md
+    assert "![alt](report.assets/s.png)" in md, md
+    assert "*cap*" in md and "> quoted" in md
+
+    # Embedding reads the real file, so build one: a valid 1x1 PNG, written
+    # with stdlib only (no Pillow) to keep this selftest dependency-free.
+    with tempfile.TemporaryDirectory() as tmp:
+        import base64
+
+        assets = os.path.join(tmp, "report.assets")
+        os.makedirs(assets, exist_ok=True)
+        with open(os.path.join(assets, "s.png"), "wb") as fh:
+            fh.write(base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/wD/9p0AAAAASUVORK5CYII="
+            ))
+        embedded = D.render_markdown(doc, assets, embed=True)
+        assert "data:image/png;base64," in embedded, "embedding did not inline the image"
+        # ...and a missing file degrades to a plain reference, not a crash.
+        missing = D.render_markdown(doc, os.path.join(tmp, "nope"), embed=True)
+        assert "nope/s.png" in missing
+
+    cfg = default_config()
+    assert cfg["docs"]["enabled"] is True
+    assert cfg["imaging"]["enabled"] is True
+
+
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("policy blocks constitution violation", _t_policy_blocks_constitution),
     ("policy risk grading", _t_policy_risk_grading),
@@ -206,6 +379,9 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("custom provider management", _t_custom_provider_managable),
     ("developer mode: no refusals", _t_developer_mode_no_refusals),
     ("developer mode: operator-only", _t_developer_mode_operator_only),
+    ("browser tools graded + network-gated", _t_browser_tools_registered_and_gated),
+    ("search + media tools graded + gated", _t_search_and_media_tools_graded),
+    ("docs + imaging graded, markdown renders", _t_docs_and_imaging_graded),
 ]
 
 

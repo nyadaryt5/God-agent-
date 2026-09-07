@@ -48,6 +48,77 @@
   "self_model": { "path": "~/.god-agent/self.json", "max_update_chars": 2000, "max_versions": 100 },
   "audit": { "path": "~/.god-agent/audit.jsonl", "max_mb": 256 },
   "api": { "enabled": false, "host": "0.0.0.0", "port": 8765, "token": "", "tls": false },
+  "browser": {
+    "headless": true,
+    "timeout_s": 30,
+    "max_text_chars": 200000,
+    "viewport": { "width": 1280, "height": 900 },
+    "user_agent": "",
+    "allow_js": true,
+    "state_path": "",
+    "stealth": {
+      "enabled": true,
+      "profile": "windows-chrome",
+      "locale": "en-US",
+      "timezone": "",
+      "webgl_vendor": "",
+      "webgl_renderer": "",
+      "humanize": {
+        "enabled": true,
+        "typing_delay_ms": [40, 130],
+        "mouse_steps": [8, 25],
+        "pause_ms": [300, 1200]
+      }
+    },
+    "proxy": { "server": "", "username": "", "password": "", "bypass": "" },
+    "polite": {
+      "enabled": true,
+      "robots_txt": true,
+      "user_agent_token": "GodAgent",
+      "min_delay_ms": 1000,
+      "max_requests_per_minute": 30
+    }
+  },
+  "search": {
+    "enabled": true,
+    "backend": "duckduckgo",
+    "api_key": "",
+    "base_url": "",
+    "max_results": 8,
+    "max_snippet_chars": 400,
+    "timeout_s": 20,
+    "safe_search": true
+  },
+  "media": {
+    "enabled": true,
+    "base_url": "",
+    "api_key": "",
+    "vision_model": "",
+    "image_model": "gpt-image-1",
+    "image_size": "1024x1024",
+    "speech_model": "tts-1",
+    "speech_voice": "alloy",
+    "speech_format": "mp3",
+    "output_dir": "",
+    "max_image_mb": 20,
+    "play_audio": false,
+    "max_prompt_chars": 4000,
+    "timeout_s": 180
+  },
+  "docs": {
+    "enabled": true,
+    "default_format": "md",
+    "embed_images": true,
+    "pdf_format": "A4",
+    "max_image_mb": 25,
+    "output_dir": ""
+  },
+  "imaging": {
+    "enabled": true,
+    "max_image_mb": 25,
+    "jpeg_quality": 90,
+    "default_format": "png"
+  },
   "kill_switch": { "path": "~/.god-agent/DISABLED" },
   "state": { "root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks" }
 }

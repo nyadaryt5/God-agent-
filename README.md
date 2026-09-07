@@ -23,11 +23,18 @@ loop*, which is the honest, engineering version of "consciousness". See
 | **Self-evolution** | The agent proposes changes to itself (new tools, heuristics, docs). Every proposal is validated, built in an isolated tree, byte-compiled, tested, and then **applied (reversible git commit) or handed to a human**. It can never evolve its Constitution or policy code. |
 | **Self-model ("self-awareness")** | Persistent model of its identity, capabilities, boundaries, stats, and lessons. It can introspect itself and, within strict limits, update its own self-description. |
 | **Memory** | Every task becomes an episode; every task ends with a reflection; TF-IDF recall pulls relevant history into context. |
+| **Real browser automation** | Ten `browser_*` tools drive a genuine headless Chromium — **JavaScript runs, cookies persist, sessions survive across steps**, so logins and SPAs work. `open` · `click` · `type` · `extract` · `links` · `wait` · `screenshot` · `eval` · `stealth_check` · `close`. Anti-bot-detection hardening on by default. Policy-graded and audited like every other tool (unlike an MCP browser server, which cannot be risk-graded). See [Browser automation](#browser-automation). |
 | **Real agent engine** | Runs the **OpenAI Agents SDK** (MIT, from OpenAI) when an OpenAI-compatible endpoint + key is configured — genuine turn-by-turn reasoning and native function-calling through God-Agent's own tools. Falls back to a built-in offline heuristic planner when no model is available. Pluggable: CrewAI, LangGraph, **Hermes Agent** (Nous Research), **UI-TARS** (ByteDance), **Grok Build** (xAI), smolagents, and AutoGen adapters activate when installed. |
 | **One body, not a crew** | God-Agent is **one organism**. The 100-specialist roster is compressed into **6 functional parts** — 1 **Brain** (reason/memory), 2 **Hands** (Left=act, Right=build), 2 **Legs** (Left=reach/network, Right=move/data), 1 **Torso** (core/guard/cloud). Each part is a real agent that folds its specialists' tools, so nothing is lost. `goda catalog` shows the body, `goda catalog --roster` lists the full 100-specialist portfolio. Add your own agents via `~/.god-agent/agents.json` or `~/.god-agent/agents.d/*.json`. Every tool call from *any* part is still policy-checked and audited. Toggle with `agent.swarm`, pick the engine with `agent.engine`. |
 | **Guardrails (Constitution, not capability limits)** | Immutable Constitution (C1–C7). The only things it cannot do are ones no operator-sane root agent should: no backdooring humans out, no exfiltrating secrets, no hiding actions, never `rm -rf /`-style host destruction. Everything else is native and unlimited. |
 | **Trust** | Append-only, **hash-chained audit log** — tampering is detectable with `goda audit --verify`. Kill switch (`goda disable`) whenever you want it to stop. |
 | **Interfaces** | **Native desktop app** (`goda desktop`, no browser/server), CLI (`goda run/chat/brain/status...`), and an optional HTTP API/dashboard. |
+| **Web search** | `web_search` returns titles, URLs, and snippets. Works **out of the box with no API key** (DuckDuckGo), or point it at Brave, Tavily, or a self-hosted SearXNG. Turns "why does nginx throw 502" into an answer instead of a guessed URL. |
+| **Vision** | `image_analyze` actually *looks* at an image. This is what makes `browser_screenshot` useful: capture a page, then read it. Also reads diagrams, charts, and error dialogs. |
+| **Image generation** | `image_generate` produces diagrams and graphics from a prompt — architecture diagrams, network topologies. |
+| **Speech** | `speak` turns text into an audio file. A monitoring agent that says "disk critical on db-01" beats one that writes another log line; set `media.play_audio` to hear it. |
+| **Documents with images** | Eleven `doc_*` tools build a real document — headings, text, code, quotes, **embedded images**, page breaks — stored as an editable block model, rendering to **md / html / pdf / docx**. Edit block 3 without regenerating the rest. See [Documents](#documents-with-images). |
+| **Image editing** | `image_info` / `image_edit` / `image_compose` — resize, crop, rotate, convert, and build before/after grids, so screenshots are the right size before they go in a report. |
 | **LLM-agnostic** | **Kira is the default** (`https://kiraai.vn/api/v1`, model `kira-3.5-flash`). Also supports OpenAI-compatible (OpenAI, OpenRouter, Ollama, vLLM, LM Studio...), Anthropic, or offline **mock mode** with a built-in heuristic planner so it's usable with zero API keys. |
 
 ## Step-by-step setup on Linux
@@ -209,6 +216,7 @@ goda audit --verify
 
 ```bash
 pip install -e '.[agents]'             # optionally install the real agent engine
+pip install -e '.[browser]'            # optionally install headless browser automation
 python3 -m god_agent.selftest          # 0-dependency core tests
 python3 -m pytest -q                   # full test suite (or: make test)
 python3 -m god_agent.desktop           # native app (requires Tk + desktop display)
@@ -278,6 +286,355 @@ their tools at runtime and calls them through its audited pipeline. `goda catalo
 --mcp` lists what's configured. This is the honest way to reach "every agent" —
 an open registry of MCP servers you point God at, without dependency bloat.
 
+## Browser automation
+
+God-Agent can do real browser tasks: fill in a login form, click through a
+dashboard, scrape a page that only renders after JavaScript runs. The built-in
+`fetch_url` tool cannot do any of that — it is a bare HTTP GET with **no
+JavaScript, no cookies, and no session**. The `browser_*` tools drive an actual
+headless Chromium, so pages behave exactly as they do for a human.
+
+```bash
+pip install 'god-agent[browser]'      # or: pip install playwright
+playwright install chromium           # download the browser binary (once)
+```
+
+Then just ask for it:
+
+```bash
+goda run "log into https://example.com/app and tell me today's open tickets"
+```
+
+### The tools
+
+| Tool | Risk | What it does |
+|---|---|---|
+| `browser_open` | 3 | Navigate to a URL. Returns final URL, title, status, and rendered text. |
+| `browser_click` | 3 | Click an element (CSS selector / text / XPath). |
+| `browser_type` | 4 | Type into an input. `press_enter: true` submits; `clear` (default) empties it first. |
+| `browser_extract` | 1 | Read rendered `text` / `html` / `value` / `attribute` from the page. |
+| `browser_links` | 1 | List every link (text + href), deduplicated — the map for navigating further. |
+| `browser_wait` | 1 | Wait for a selector to appear/disappear, or pause. Use before reading async pages. |
+| `browser_screenshot` | 2 | Save a PNG (`full_page: true` captures the whole page). |
+| `browser_eval` | 5 | Run JavaScript in the page. Escape hatch for dropdowns, scrolling, infinite lists. |
+| `browser_stealth_check` | 1 | Report what a bot-detection script sees and how many fingerprint checks pass. |
+| `browser_close` | 1 | Close the browser and flush cookies/session to disk. |
+
+### Anti-bot detection
+
+A stock Playwright launch is trivially fingerprinted: `navigator.webdriver` is
+`true`, `window.chrome` is missing, the UA contains `HeadlessChrome`, WebGL
+reports a software renderer, and CDP leaves `cdc_*` markers on the document.
+Any one of them is enough to get flagged.
+
+Stealth mode is **on by default** and patches roughly a dozen signals — but the
+part that matters is that it keeps them **mutually consistent**. A UA claiming
+Chrome on Windows alongside `navigator.userAgentData.platform === "Linux"` and
+a Mesa WebGL renderer is *more* suspicious than no patch at all, because no real
+browser produces that combination. Everything derives from one device profile:
+
+```bash
+goda settings browser.stealth.profile windows-chrome   # | macos-chrome | linux-chrome
+```
+
+Verify rather than assume — point it at a fingerprinting page and read the report:
+
+```
+$ goda run "open https://example.com and run a stealth check"
+
+stealth: on  profile: windows-chrome  ->  13/13  [CLEAN]
+PASS  navigator.webdriver             undefined
+PASS  'webdriver' in navigator        False
+PASS  window.chrome present           True
+PASS  no headless UA token            clean
+PASS  plugins populated               5 plugins
+PASS  languages set                   en-US,en
+PASS  hardwareConcurrency             8
+PASS  deviceMemory                    8
+PASS  window chrome offset            outer-inner=85px
+PASS  no cdc_ markers                 0 markers
+PASS  permissions toString native     True
+PASS  platform consistency            platform=Win32 uaData=Windows
+PASS  WebGL not software              ANGLE (Intel, Intel(R) UHD Graphics 620 ...)
+```
+
+**What it defeats:** passive fingerprinting — the browser stops advertising
+that it is automated. Also included is *humanized* interaction: random
+per-keystroke delays, cursor movement in steps with jitter rather than
+teleporting, and idle pauses between actions, since machine-cadence requests
+are a signal in themselves.
+
+**What it does not do:** it will not solve CAPTCHAs, and it will not rotate
+through proxy or identity pools. Those systems exist specifically to stop
+abuse; circumventing them is a different thing from not looking like a default
+headless browser. Use this to test your own defences, drive your own accounts,
+and automate against services you are permitted to automate. `browser.proxy`
+accepts a **single static** proxy (corporate egress, geo-testing) — it is
+deliberately not a rotation pool.
+
+Being invisible is not the same as being polite, so request pacing is on
+independently: `browser.polite` honours `robots.txt` and rate-limits to 30
+requests/minute per host by default. Both can be switched off.
+
+```jsonc
+"browser": {
+  "stealth": {
+    "enabled": true,
+    "profile": "windows-chrome",
+    "humanize": {
+      "enabled": true,
+      "typing_delay_ms": [40, 130],   // random delay per keystroke
+      "mouse_steps": [8, 25],         // intermediate cursor move steps
+      "pause_ms": [300, 1200]         // idle between actions
+    }
+  },
+  "proxy": { "server": "", "username": "", "password": "", "bypass": "" },
+  "polite": {
+    "enabled": true,
+    "robots_txt": true,
+    "user_agent_token": "GodAgent",
+    "min_delay_ms": 1000,
+    "max_requests_per_minute": 30
+  }
+}
+```
+
+### Why it's a toolset and not an MCP server
+
+You can also point God at an external browser MCP server, but the MCP module's
+own docstring is explicit about the trade-off: *"MCP tools are external; they
+cannot be graded by the local risk engine."* MCP calls are audited but **not
+risk-checked**, and a browser is precisely the tool that can POST your data
+anywhere. The built-in tools are graded (`TOOL_RISK`), gated by
+`policy.network.enabled`, bounded by config, and written to the hash-chained
+audit log like everything else.
+
+### Session behaviour
+
+One browser context is reused across tool calls, so a login typed in step 2 is
+still authenticated in step 7 — the thing that makes multi-step tasks possible.
+Cookies and localStorage are flushed to `<state.root>/browser_state.json`, so
+sessions survive even a restart. `browser_close` tears the session down.
+
+### Configuration
+
+```jsonc
+"browser": {
+  "headless": true,            // false = visible window (needs a display)
+  "timeout_s": 30,             // per-action / navigation timeout
+  "max_text_chars": 200000,    // cap on extracted text returned to the model
+  "viewport": { "width": 1280, "height": 900 },
+  "user_agent": "",            // empty = Playwright's default Chromium UA
+  "allow_js": true,            // set false to disable browser_eval entirely
+  "state_path": ""             // empty = <state.root>/browser_state.json
+}
+```
+
+Playwright stays an **optional** dependency: God-Agent's core keeps
+`dependencies = []`. Without it the browser tools return an actionable install
+hint instead of failing at startup, and the offline heuristic planner is
+unaffected.
+
+> **Not the same as the UI-TARS engine.** UI-TARS is an *engine* that replaces
+> the whole reasoning loop with a screenshot→vision→pyautogui cycle, and it
+> needs a display plus a vision-capable endpoint. The browser tools are ordinary
+> *tools* inside the normal loop — they compose with shell, files, and the
+> Brain, and they run headless on a server.
+
+## Search, vision, image generation, and speech
+
+A sysadmin agent with only a shell is missing what a general-purpose agent can
+do: look things up, see images, draw diagrams, and speak. Four tools close
+that gap — and like everything else, they are policy-graded and audited.
+
+```bash
+goda run "search for why nginx returns 502 and summarise the fix"
+goda run "screenshot the status page and tell me what it shows"
+goda run "generate a diagram of our three-tier network topology"
+goda run "check disk space and speak an alert if anything is over 90%"
+```
+
+### Web search
+
+Works **with zero configuration** — the default DuckDuckGo backend needs no API
+key. Upgrade to a real search API when you want better results:
+
+| Backend | Needs | Notes |
+|---|---|---|
+| `duckduckgo` | nothing | default; scrapes the HTML endpoint |
+| `brave` | `search.api_key` | Brave Search API |
+| `tavily` | `search.api_key` | Tavily Search API |
+| `searxng` | `search.base_url` | self-hosted SearXNG |
+| `mock` | nothing | offline stub for tests/demos |
+
+Search composes with the browser tools: search to discover, then
+`browser_open` / `browser_extract` to read.
+
+```jsonc
+"search": {
+  "enabled": true,
+  "backend": "duckduckgo",   // duckduckgo | brave | tavily | searxng | mock
+  "api_key": "", "base_url": "",
+  "max_results": 8, "timeout_s": 20, "safe_search": true
+}
+```
+
+### Vision, images, and speech
+
+These ride the **same OpenAI-compatible endpoint** God-Agent already uses for
+chat, so there is nothing new to install and no new dependency:
+
+| Tool | API surface |
+|---|---|
+| `image_analyze` | `POST /chat/completions` (multimodal message) |
+| `image_generate` | `POST /images/generations` |
+| `speak` | `POST /audio/speech` |
+
+Leave `media.base_url` and `media.api_key` empty to inherit from the `llm`
+section; set them to point these somewhere else. If your provider does not
+implement one of those surfaces you get a clear "does not implement" error
+rather than a stack trace.
+
+**Vision is the missing half of `browser_screenshot`.** The browser toolset
+could capture a page but not read one — the agent was screenshotting pages it
+could not see. Now:
+
+```bash
+goda run "open https://example.com, screenshot it, and describe what you see"
+```
+
+**Privacy:** `image_analyze` uploads the image to the configured endpoint. For
+a dashboard screenshot containing credentials, that means sending it to a third
+party. It only runs when called, it is audited, and it dies with
+`policy.network.enabled`.
+
+```jsonc
+"media": {
+  "enabled": true,
+  "base_url": "",           // empty = llm.base_url
+  "api_key": "",            // empty = llm api key
+  "vision_model": "",       // empty = llm.model (must be vision-capable)
+  "image_model": "gpt-image-1", "image_size": "1024x1024",
+  "speech_model": "tts-1", "speech_voice": "alloy", "speech_format": "mp3",
+  "output_dir": "",         // empty = <state.root>/media
+  "max_image_mb": 20, "play_audio": false
+}
+```
+
+Generated images and audio are written to `output_dir`
+(`~/.god-agent/media` by default) and the path is returned, so the agent can
+hand it to the next step.
+
+### Risk grades
+
+| Tool | Risk | Why |
+|---|---|---|
+| `web_search` | 3 | outbound network, like `fetch_url` |
+| `image_analyze` | 3 | uploads a file to a third party |
+| `image_generate` | 3 | outbound network + spend |
+| `speak` | 2 | local output, but text goes to a remote TTS endpoint |
+
+All four are gated by `policy.network.enabled`.
+
+## Documents with images
+
+God-Agent could produce text and it could produce images, but it had no way to
+**put them together**. "Screenshot the dashboard, search for the error, and
+write me a report" ended in a pile of loose files.
+
+A document is an ordered list of **blocks** (heading / text / code / quote /
+image / page break) stored as JSON, next to an assets folder holding its
+images. Editing is by block index, so the agent can revise one paragraph
+without regenerating everything around it.
+
+```bash
+goda run "screenshot the status page, then write me a PDF incident report with the screenshot and a summary"
+```
+
+### The tools
+
+| Tool | What it does |
+|---|---|
+| `doc_create` | Create a document (title, assets folder) |
+| `doc_add_heading` | Heading, level 1–6 |
+| `doc_add_text` | Paragraph |
+| `doc_add_code` | Fenced code block |
+| `doc_add_quote` | Block quote |
+| `doc_add_page_break` | Page break (pdf/docx) |
+| `doc_add_image` | **Embed an image** — copies it into the document's assets |
+| `doc_outline` | List blocks with indices (run before editing) |
+| `doc_edit` | Replace one block's content, in place |
+| `doc_remove` | Delete a block |
+| `doc_render` | Render to `md` / `html` / `pdf` / `docx` |
+
+### Why a block model instead of "just write a file"
+
+Because revising is the hard part. With a raw file, fixing paragraph 3 means
+regenerating the whole document — and re-embedding every image. With blocks:
+
+```
+$ goda run "fix the summary paragraph in report"
+
+[0] heading     Summary
+[1] text        Disk filled up at 03:14 UTC.        <- edit just this
+[2] code        df -h
+[3] image       dash.png  Dashboard at 03:14
+```
+
+```bash
+goda run "open report, edit block 1 with the corrected timeline, re-render to pdf"
+```
+
+One document renders to **every** format, so re-rendering after an edit is
+cheap and nothing gets rebuilt by hand.
+
+### Rendering
+
+| Format | Needs | Notes |
+|---|---|---|
+| `md` | nothing | references `assets/…` relatively — stays readable and diffable |
+| `html` | nothing | single self-contained file, images base64-embedded |
+| `pdf` | Playwright + Chromium | HTML printed through the headless browser the tools already use |
+| `docx` | `pip install 'god-agent[docs]'` | real `.docx` with pictures |
+
+Images are base64-embedded in HTML and PDF because those are meant to be
+emailed as one file. Markdown deliberately does **not** inline them — a
+markdown file with a 500 KB image blob pasted into it is unreadable, and the
+assets folder already sits right beside it.
+
+### Image editing
+
+The step between `browser_screenshot` / `image_generate` and `doc_add_image`:
+
+```bash
+goda run "resize the screenshot to 800px wide and drop it in the report"
+goda run "compose the before and after screenshots side by side"
+```
+
+```jsonc
+"docs": {
+  "enabled": true,
+  "default_format": "md",
+  "embed_images": true,      // html/pdf only; md always references files
+  "pdf_format": "A4",
+  "max_image_mb": 25,
+  "output_dir": ""           // empty = render next to the document
+},
+"imaging": { "enabled": true, "max_image_mb": 25, "jpeg_quality": 90 }
+```
+
+`image_edit` operations apply in a fixed order — crop → resize → rotate →
+flip → grayscale → convert — and the source file is never modified unless you
+pass it as `out`.
+
+### Risk grades
+
+Reading (`doc_outline`, `image_info`) is 1. Adding blocks is 2. Anything that
+writes to disk (`doc_create`, `doc_edit`, `doc_remove`, `image_edit`,
+`image_compose`) is 3, matching `write_file`. These are local file operations,
+so unlike the search and media tools they are **not** gated by
+`policy.network.enabled`.
+
 ## Troubleshooting
 
 | Issue | Cause | Solution |
@@ -290,6 +647,25 @@ an open registry of MCP servers you point God at, without dependency bloat.
 | `Permission denied: ./install.sh` | Script missing executable permission | Run `bash ./install.sh` or `chmod +x ./install.sh`. |
 | `no LLM API key — offline mode` | No LLM provider configured yet | Expected behavior — offline diagnostics work without a key. Configure Kira in the native app’s AI provider tab, or set `KIRA_API_KEY` before launching it. |
 | Direct execution | Running without installation | Run `python3 god_agent/cli.py` or `python3 -m god_agent`. |
+| `ERROR: browser tools require Playwright` | Playwright missing | `pip install 'god-agent[browser]'` then `playwright install chromium`. |
+| `Executable doesn't exist at .../chrome-headless-shell` | The Chromium binary was never downloaded | Run `playwright install chromium`. |
+| Browser launch fails on a minimal container | Missing shared system libraries | `playwright install --with-deps chromium` (needs root), or use the distro Chromium package. |
+| Agent reads a blank/stale page | Content loads asynchronously | Add a `browser_wait` step for the selector before extracting. |
+| `browser_stealth_check` shows FAIL rows | Stealth off, or an explicit `user_agent` was set | Set `browser.stealth.enabled` true, or clear `browser.user_agent` so the profile's UA applies. |
+| `ERROR: disallowed by .../robots.txt` | The site opts out of automated access | Confirm you are permitted to automate it, then set `browser.polite.robots_txt=false`. |
+| `ERROR: rate limit reached for <host>` | More than `max_requests_per_minute` in a minute | Wait, or raise `browser.polite.max_requests_per_minute`. |
+| Typing is very slow | Humanized keystroke delay | Lower `browser.stealth.humanize.typing_delay_ms`, or set `humanize.enabled=false`. |
+| `ERROR: document already exists` | `doc_create` refuses to clobber | Pass `overwrite=true`, or `doc_outline` the existing one and edit it. |
+| `ERROR: no such document` (doc_add_*) | Document was never created | Run `doc_create` first. |
+| `ERROR: DOCX rendering needs python-docx` | Optional extra missing | `pip install 'god-agent[docs]'`. |
+| `ERROR: PDF rendering needs Playwright` | Browser extra missing | `pip install 'god-agent[browser]' && playwright install chromium`. |
+| `ERROR: image editing needs Pillow` | Pillow missing | `pip install pillow` (or `pip install 'god-agent[docs]'`). |
+| Images missing from rendered markdown | Relative refs resolve against the assets folder | Keep the `.assets` folder next to the `.md`, or render `html`/`pdf` instead. |
+| `ERROR: search is disabled` | `search.enabled` is false | Set `goda settings search.enabled true`. |
+| `ERROR: brave backend needs search.api_key` | Keyed backend with no key | Supply `search.api_key`, or switch to the keyless `duckduckgo` backend. |
+| `ERROR: this provider does not implement /images/generations` | Endpoint lacks that surface | Point `media.base_url` at a provider that offers it. |
+| `ERROR: no API key configured` (media) | No chat key set | Set the LLM key (`KIRA_API_KEY` by default) or `media.api_key` explicitly. |
+| `image_analyze` returns "no description" | Model is not vision-capable | Set `media.vision_model` to a multimodal model. |
 
 ## Policy — read & tune before going to production
 
@@ -337,7 +713,10 @@ god_agent/          the agent (zero third-party runtime dependencies for the
   api.py            optional HTTP API
   static/           dashboard
   tools/            shell, files, system (GPU/process/sysctl/cron), memory,
-                    brain, network, self, evolve
+                    brain, network, browser (headless Chromium), stealth
+                    (anti-bot-detection), search (web), media (vision/image/
+                    speech), docs (block-model documents), imaging (edit),
+                    self, evolve
 install.sh          installer (--desktop / --local / system-wide)
 install_local.sh    user app, launchers, and Linux application-menu integration
 uninstall.sh        removal
@@ -361,6 +740,10 @@ docs/               constitution, brain, safety, architecture, consciousness
 - [x] One body, not a crew — 100 specialists compressed into 6 parts (1 brain, 2 hands, 2 legs, 1 torso)
 - [x] Extensible agent registry (`goda catalog`, `~/.god-agent/agents.json`, `agents.d/`)
 - [x] MCP client (connect external agent/tool servers: stdio, SSE, streamable-HTTP)
+- [x] Real browser automation (headless Chromium: JS, cookies, sessions; policy-graded + audited)
+- [x] Anti-bot-detection hardening (consistent device profiles, humanized input, `browser_stealth_check` verification)
+- [x] Web search (keyless DuckDuckGo default + Brave/Tavily/SearXNG), vision, image generation, speech
+- [x] Documents with images (block model, edit in place, render md/html/pdf/docx) + image editing
 - [ ] Real-time alert rules (thresholds on metrics)
 - [ ] Vault/KMS integration for Brain credentials
 
