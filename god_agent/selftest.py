@@ -191,6 +191,45 @@ def _t_custom_provider_managable():
         assert pm.remove("My Custom")
 
 
+def _t_browser_tools_registered_and_gated():
+    """Browser tools must be risk-graded and honour the network kill switch.
+
+    Deliberately dependency-free: it never launches a browser, so it stays
+    valid on a fresh server with no Playwright installed.
+    """
+    from .config import default_config
+    from .policy import Policy, TOOL_RISK, NETWORK_TOOLS
+
+    names = ["browser_open", "browser_click", "browser_type", "browser_extract",
+             "browser_links", "browser_wait", "browser_screenshot",
+             "browser_eval", "browser_close"]
+    for n in names:
+        assert n in TOOL_RISK, f"{n} is ungraded — it would bypass risk policy"
+
+    # Reading a page is benign; submitting data and running JS are not.
+    assert TOOL_RISK["browser_extract"] <= 1
+    assert TOOL_RISK["browser_type"] >= 4
+    assert TOOL_RISK["browser_eval"] >= 5
+
+    # Everything that touches the network dies with the kill switch...
+    off = default_config()
+    off["policy"]["network"]["enabled"] = False
+    p = Policy(off)
+    for n in names:
+        if n == "browser_close":
+            continue
+        assert not p.assess(n, {"url": "https://example.com"}).allowed, \
+            f"{n} survives network.enabled=false"
+
+    # ...except close, which is local cleanup and must always work.
+    assert "browser_close" not in NETWORK_TOOLS
+    assert p.assess("browser_close", {}).allowed
+
+    cfg = default_config()
+    assert cfg["browser"]["headless"] is True
+    assert cfg["browser"]["allow_js"] is True
+
+
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("policy blocks constitution violation", _t_policy_blocks_constitution),
     ("policy risk grading", _t_policy_risk_grading),
@@ -206,6 +245,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("custom provider management", _t_custom_provider_managable),
     ("developer mode: no refusals", _t_developer_mode_no_refusals),
     ("developer mode: operator-only", _t_developer_mode_operator_only),
+    ("browser tools graded + network-gated", _t_browser_tools_registered_and_gated),
 ]
 
 

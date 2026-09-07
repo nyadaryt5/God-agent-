@@ -59,6 +59,7 @@ class ToolRegistry:
 
     def _register_all(self) -> None:
         from . import brain, files, memory, network, selfmodel, shell, system
+        from . import browser as _browser
         from ..evolution import evolve
 
         TOOL_META = {
@@ -135,6 +136,48 @@ class ToolRegistry:
                                      "note": {"type": "string"}}),
             network.fetch_url: ("Fetch a URL (GET, size-bounded; network must be enabled).",
                                 {"url": {"type": "string", "required": True}}),
+            # -- browser: real headless Chromium (JS, cookies, sessions) ------
+            _browser.browser_open: ("Open a URL in a real browser. JavaScript runs, cookies "
+                                    "persist, sessions survive across calls. Use this instead "
+                                    "of fetch_url for any interactive or JS-rendered page.",
+                                    {"url": {"type": "string", "required": True},
+                                     "wait_until": {"type": "string",
+                                                    "enum": ["load", "domcontentloaded",
+                                                             "networkidle", "commit"],
+                                                    "default": "domcontentloaded"}}),
+            _browser.browser_click: ("Click an element in the open browser page.",
+                                     {"selector": {"type": "string", "required": True}}),
+            _browser.browser_type: ("Type text into an input field in the open browser page.",
+                                    {"selector": {"type": "string", "required": True},
+                                     "text": {"type": "string", "required": True},
+                                     "clear": {"type": "boolean", "default": True},
+                                     "press_enter": {"type": "boolean", "default": False},
+                                     "delay_ms": {"type": "integer", "default": 0}}),
+            _browser.browser_extract: ("Extract rendered text/HTML/value/attribute from the page. "
+                                       "Reads what a human sees, after JavaScript has run.",
+                                       {"selector": {"type": "string", "default": "body"},
+                                        "mode": {"type": "string",
+                                                 "enum": ["text", "html", "value", "attribute"],
+                                                 "default": "text"},
+                                        "attribute": {"type": "string"}}),
+            _browser.browser_links: ("List all links (text + href) on the current page.",
+                                     {"limit": {"type": "integer", "default": 100}}),
+            _browser.browser_wait: ("Wait for a selector to appear/disappear, or pause. Use "
+                                    "before extracting from pages that load asynchronously.",
+                                    {"selector": {"type": "string"},
+                                     "state": {"type": "string",
+                                               "enum": ["visible", "hidden", "attached",
+                                                        "detached"],
+                                               "default": "visible"},
+                                     "ms": {"type": "integer", "default": 1000}}),
+            _browser.browser_screenshot: ("Save a PNG screenshot of the current page.",
+                                          {"path": {"type": "string", "required": True},
+                                           "full_page": {"type": "boolean", "default": False}}),
+            _browser.browser_eval: ("Run JavaScript in the page and return the result. Escape "
+                                    "hatch for dropdowns, scrolling, and infinite lists.",
+                                    {"script": {"type": "string", "required": True}}),
+            _browser.browser_close: ("Close the browser and save cookies/session to disk.",
+                                     {}),
             evolve: ("Evolve yourself: propose validated, tested changes to your own source.",
                      {"proposal": {"type": "object", "required": True}}),
         }

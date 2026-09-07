@@ -111,6 +111,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model": "",
         "api_key": "",
     },
+    # Real browser automation (Playwright + headless Chromium). Optional: the
+    # browser tools return a clear install hint when Playwright is absent.
+    # Install with: pip install 'god-agent[browser]' && playwright install chromium
+    "browser": {
+        "headless": True,          # False shows a visible window (needs a display)
+        "timeout_s": 30,           # per-action / navigation timeout
+        "max_text_chars": 200_000, # cap on extracted text returned to the model
+        "viewport": {"width": 1280, "height": 900},
+        "user_agent": "",          # empty = Playwright's default Chromium UA
+        "allow_js": True,          # browser_eval escape hatch; disable to lock it down
+        "state_path": "",          # empty = <state.root>/browser_state.json (cookies/session)
+    },
     "kill_switch": {"path": "~/.god-agent/DISABLED"},
     "state": {"root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks"},
 }

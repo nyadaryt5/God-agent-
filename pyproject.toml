@@ -24,6 +24,9 @@ dependencies = []
 # extra): `curl -fsSL https://x.ai/cli/install.sh | bash` — God detects the `grok`
 # binary and drives it headlessly; xAI's API is also a selectable provider.
 agents = ["openai-agents>=0.10"]
+# Real browser automation: headless Chromium with JS, cookies, and sessions.
+# After installing, fetch the browser binary once: `playwright install chromium`
+browser = ["playwright>=1.40"]
 crewai = ["crewai>=0.100"]
 langgraph = ["langgraph>=0.2"]
 hermes = ["hermes-agent>=0.18"]

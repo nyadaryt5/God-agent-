@@ -23,6 +23,7 @@ loop*, which is the honest, engineering version of "consciousness". See
 | **Self-evolution** | The agent proposes changes to itself (new tools, heuristics, docs). Every proposal is validated, built in an isolated tree, byte-compiled, tested, and then **applied (reversible git commit) or handed to a human**. It can never evolve its Constitution or policy code. |
 | **Self-model ("self-awareness")** | Persistent model of its identity, capabilities, boundaries, stats, and lessons. It can introspect itself and, within strict limits, update its own self-description. |
 | **Memory** | Every task becomes an episode; every task ends with a reflection; TF-IDF recall pulls relevant history into context. |
+| **Real browser automation** | Nine `browser_*` tools drive a genuine headless Chromium — **JavaScript runs, cookies persist, sessions survive across steps**, so logins and SPAs work. `open` · `click` · `type` · `extract` · `links` · `wait` · `screenshot` · `eval` · `close`. Policy-graded and audited like every other tool (unlike an MCP browser server, which cannot be risk-graded). See [Browser automation](#browser-automation). |
 | **Real agent engine** | Runs the **OpenAI Agents SDK** (MIT, from OpenAI) when an OpenAI-compatible endpoint + key is configured — genuine turn-by-turn reasoning and native function-calling through God-Agent's own tools. Falls back to a built-in offline heuristic planner when no model is available. Pluggable: CrewAI, LangGraph, **Hermes Agent** (Nous Research), **UI-TARS** (ByteDance), **Grok Build** (xAI), smolagents, and AutoGen adapters activate when installed. |
 | **One body, not a crew** | God-Agent is **one organism**. The 100-specialist roster is compressed into **6 functional parts** — 1 **Brain** (reason/memory), 2 **Hands** (Left=act, Right=build), 2 **Legs** (Left=reach/network, Right=move/data), 1 **Torso** (core/guard/cloud). Each part is a real agent that folds its specialists' tools, so nothing is lost. `goda catalog` shows the body, `goda catalog --roster` lists the full 100-specialist portfolio. Add your own agents via `~/.god-agent/agents.json` or `~/.god-agent/agents.d/*.json`. Every tool call from *any* part is still policy-checked and audited. Toggle with `agent.swarm`, pick the engine with `agent.engine`. |
 | **Guardrails (Constitution, not capability limits)** | Immutable Constitution (C1–C7). The only things it cannot do are ones no operator-sane root agent should: no backdooring humans out, no exfiltrating secrets, no hiding actions, never `rm -rf /`-style host destruction. Everything else is native and unlimited. |
@@ -209,6 +210,7 @@ goda audit --verify
 
 ```bash
 pip install -e '.[agents]'             # optionally install the real agent engine
+pip install -e '.[browser]'            # optionally install headless browser automation
 python3 -m god_agent.selftest          # 0-dependency core tests
 python3 -m pytest -q                   # full test suite (or: make test)
 python3 -m god_agent.desktop           # native app (requires Tk + desktop display)
@@ -278,6 +280,81 @@ their tools at runtime and calls them through its audited pipeline. `goda catalo
 --mcp` lists what's configured. This is the honest way to reach "every agent" —
 an open registry of MCP servers you point God at, without dependency bloat.
 
+## Browser automation
+
+God-Agent can do real browser tasks: fill in a login form, click through a
+dashboard, scrape a page that only renders after JavaScript runs. The built-in
+`fetch_url` tool cannot do any of that — it is a bare HTTP GET with **no
+JavaScript, no cookies, and no session**. The `browser_*` tools drive an actual
+headless Chromium, so pages behave exactly as they do for a human.
+
+```bash
+pip install 'god-agent[browser]'      # or: pip install playwright
+playwright install chromium           # download the browser binary (once)
+```
+
+Then just ask for it:
+
+```bash
+goda run "log into https://example.com/app and tell me today's open tickets"
+```
+
+### The tools
+
+| Tool | Risk | What it does |
+|---|---|---|
+| `browser_open` | 3 | Navigate to a URL. Returns final URL, title, status, and rendered text. |
+| `browser_click` | 3 | Click an element (CSS selector / text / XPath). |
+| `browser_type` | 4 | Type into an input. `press_enter: true` submits; `clear` (default) empties it first. |
+| `browser_extract` | 1 | Read rendered `text` / `html` / `value` / `attribute` from the page. |
+| `browser_links` | 1 | List every link (text + href), deduplicated — the map for navigating further. |
+| `browser_wait` | 1 | Wait for a selector to appear/disappear, or pause. Use before reading async pages. |
+| `browser_screenshot` | 2 | Save a PNG (`full_page: true` captures the whole page). |
+| `browser_eval` | 5 | Run JavaScript in the page. Escape hatch for dropdowns, scrolling, infinite lists. |
+| `browser_close` | 1 | Close the browser and flush cookies/session to disk. |
+
+### Why it's a toolset and not an MCP server
+
+You can also point God at an external browser MCP server, but the MCP module's
+own docstring is explicit about the trade-off: *"MCP tools are external; they
+cannot be graded by the local risk engine."* MCP calls are audited but **not
+risk-checked**, and a browser is precisely the tool that can POST your data
+anywhere. The built-in tools are graded (`TOOL_RISK`), gated by
+`policy.network.enabled`, bounded by config, and written to the hash-chained
+audit log like everything else.
+
+### Session behaviour
+
+One browser context is reused across tool calls, so a login typed in step 2 is
+still authenticated in step 7 — the thing that makes multi-step tasks possible.
+Cookies and localStorage are flushed to `<state.root>/browser_state.json`, so
+sessions survive even a restart. `browser_close` tears the session down.
+
+### Configuration
+
+```jsonc
+"browser": {
+  "headless": true,            // false = visible window (needs a display)
+  "timeout_s": 30,             // per-action / navigation timeout
+  "max_text_chars": 200000,    // cap on extracted text returned to the model
+  "viewport": { "width": 1280, "height": 900 },
+  "user_agent": "",            // empty = Playwright's default Chromium UA
+  "allow_js": true,            // set false to disable browser_eval entirely
+  "state_path": ""             // empty = <state.root>/browser_state.json
+}
+```
+
+Playwright stays an **optional** dependency: God-Agent's core keeps
+`dependencies = []`. Without it the browser tools return an actionable install
+hint instead of failing at startup, and the offline heuristic planner is
+unaffected.
+
+> **Not the same as the UI-TARS engine.** UI-TARS is an *engine* that replaces
+> the whole reasoning loop with a screenshot→vision→pyautogui cycle, and it
+> needs a display plus a vision-capable endpoint. The browser tools are ordinary
+> *tools* inside the normal loop — they compose with shell, files, and the
+> Brain, and they run headless on a server.
+
 ## Troubleshooting
 
 | Issue | Cause | Solution |
@@ -290,6 +367,10 @@ an open registry of MCP servers you point God at, without dependency bloat.
 | `Permission denied: ./install.sh` | Script missing executable permission | Run `bash ./install.sh` or `chmod +x ./install.sh`. |
 | `no LLM API key — offline mode` | No LLM provider configured yet | Expected behavior — offline diagnostics work without a key. Configure Kira in the native app’s AI provider tab, or set `KIRA_API_KEY` before launching it. |
 | Direct execution | Running without installation | Run `python3 god_agent/cli.py` or `python3 -m god_agent`. |
+| `ERROR: browser tools require Playwright` | Playwright missing | `pip install 'god-agent[browser]'` then `playwright install chromium`. |
+| `Executable doesn't exist at .../chrome-headless-shell` | The Chromium binary was never downloaded | Run `playwright install chromium`. |
+| Browser launch fails on a minimal container | Missing shared system libraries | `playwright install --with-deps chromium` (needs root), or use the distro Chromium package. |
+| Agent reads a blank/stale page | Content loads asynchronously | Add a `browser_wait` step for the selector before extracting. |
 
 ## Policy — read & tune before going to production
 
@@ -337,7 +418,7 @@ god_agent/          the agent (zero third-party runtime dependencies for the
   api.py            optional HTTP API
   static/           dashboard
   tools/            shell, files, system (GPU/process/sysctl/cron), memory,
-                    brain, network, self, evolve
+                    brain, network, browser (headless Chromium), self, evolve
 install.sh          installer (--desktop / --local / system-wide)
 install_local.sh    user app, launchers, and Linux application-menu integration
 uninstall.sh        removal
@@ -361,6 +442,7 @@ docs/               constitution, brain, safety, architecture, consciousness
 - [x] One body, not a crew — 100 specialists compressed into 6 parts (1 brain, 2 hands, 2 legs, 1 torso)
 - [x] Extensible agent registry (`goda catalog`, `~/.god-agent/agents.json`, `agents.d/`)
 - [x] MCP client (connect external agent/tool servers: stdio, SSE, streamable-HTTP)
+- [x] Real browser automation (headless Chromium: JS, cookies, sessions; policy-graded + audited)
 - [ ] Real-time alert rules (thresholds on metrics)
 - [ ] Vault/KMS integration for Brain credentials
 

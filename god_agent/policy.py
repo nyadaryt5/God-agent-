@@ -59,9 +59,28 @@ TOOL_RISK: dict[str, int] = {
     "system_tune": 4,
     "schedule_job": 4,
     "fetch_url": 3,
+    # -- browser (real headless Chromium) ---------------------------------
+    # Navigation and clicking are ordinary web activity; typing is graded
+    # higher because it is how credentials and form data get submitted.
+    "browser_open": 3,
+    "browser_click": 3,
+    "browser_type": 4,
+    "browser_extract": 1,
+    "browser_links": 1,
+    "browser_wait": 1,
+    "browser_screenshot": 2,
+    "browser_eval": 5,
+    "browser_close": 1,
     "evolve": 6,
     "run_plan": 2,
 }
+
+# Tools that reach the network and are therefore governed by
+# policy.network.enabled. Kept as a set so browser tools added later inherit
+# the same gate automatically.
+NETWORK_TOOLS = {"fetch_url", "browser_open", "browser_click", "browser_type",
+                 "browser_extract", "browser_links", "browser_wait",
+                 "browser_screenshot", "browser_eval"}
 
 # Commands that always require a human (or sovereign autonomy).
 ALWAYS_ASK_PATTERNS = [
@@ -245,10 +264,10 @@ class Policy:
                 reasons += rr
         elif tool == "evolve":
             reasons.append("self-modification")
-        elif tool == "fetch_url":
+        elif tool in NETWORK_TOOLS:
             if not self.cfg["policy"]["network"].get("enabled") and not self.dev_mode:
                 return Decision(False, risk, RISK_LEVELS[risk], "network disabled in policy", False)
-            reasons.append("network fetch")
+            reasons.append("network fetch" if tool == "fetch_url" else "browser automation")
 
         return self._decide(risk, reasons, tool, args)
 

@@ -48,6 +48,15 @@
   "self_model": { "path": "~/.god-agent/self.json", "max_update_chars": 2000, "max_versions": 100 },
   "audit": { "path": "~/.god-agent/audit.jsonl", "max_mb": 256 },
   "api": { "enabled": false, "host": "0.0.0.0", "port": 8765, "token": "", "tls": false },
+  "browser": {
+    "headless": true,
+    "timeout_s": 30,
+    "max_text_chars": 200000,
+    "viewport": { "width": 1280, "height": 900 },
+    "user_agent": "",
+    "allow_js": true,
+    "state_path": ""
+  },
   "kill_switch": { "path": "~/.god-agent/DISABLED" },
   "state": { "root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks" }
 }
