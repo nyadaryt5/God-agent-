@@ -23,7 +23,7 @@ loop*, which is the honest, engineering version of "consciousness". See
 | **Self-evolution** | The agent proposes changes to itself (new tools, heuristics, docs). Every proposal is validated, built in an isolated tree, byte-compiled, tested, and then **applied (reversible git commit) or handed to a human**. It can never evolve its Constitution or policy code. |
 | **Self-model ("self-awareness")** | Persistent model of its identity, capabilities, boundaries, stats, and lessons. It can introspect itself and, within strict limits, update its own self-description. |
 | **Memory** | Every task becomes an episode; every task ends with a reflection; TF-IDF recall pulls relevant history into context. |
-| **Real browser automation** | Nine `browser_*` tools drive a genuine headless Chromium — **JavaScript runs, cookies persist, sessions survive across steps**, so logins and SPAs work. `open` · `click` · `type` · `extract` · `links` · `wait` · `screenshot` · `eval` · `close`. Policy-graded and audited like every other tool (unlike an MCP browser server, which cannot be risk-graded). See [Browser automation](#browser-automation). |
+| **Real browser automation** | Ten `browser_*` tools drive a genuine headless Chromium — **JavaScript runs, cookies persist, sessions survive across steps**, so logins and SPAs work. `open` · `click` · `type` · `extract` · `links` · `wait` · `screenshot` · `eval` · `stealth_check` · `close`. Anti-bot-detection hardening on by default. Policy-graded and audited like every other tool (unlike an MCP browser server, which cannot be risk-graded). See [Browser automation](#browser-automation). |
 | **Real agent engine** | Runs the **OpenAI Agents SDK** (MIT, from OpenAI) when an OpenAI-compatible endpoint + key is configured — genuine turn-by-turn reasoning and native function-calling through God-Agent's own tools. Falls back to a built-in offline heuristic planner when no model is available. Pluggable: CrewAI, LangGraph, **Hermes Agent** (Nous Research), **UI-TARS** (ByteDance), **Grok Build** (xAI), smolagents, and AutoGen adapters activate when installed. |
 | **One body, not a crew** | God-Agent is **one organism**. The 100-specialist roster is compressed into **6 functional parts** — 1 **Brain** (reason/memory), 2 **Hands** (Left=act, Right=build), 2 **Legs** (Left=reach/network, Right=move/data), 1 **Torso** (core/guard/cloud). Each part is a real agent that folds its specialists' tools, so nothing is lost. `goda catalog` shows the body, `goda catalog --roster` lists the full 100-specialist portfolio. Add your own agents via `~/.god-agent/agents.json` or `~/.god-agent/agents.d/*.json`. Every tool call from *any* part is still policy-checked and audited. Toggle with `agent.swarm`, pick the engine with `agent.engine`. |
 | **Guardrails (Constitution, not capability limits)** | Immutable Constitution (C1–C7). The only things it cannot do are ones no operator-sane root agent should: no backdooring humans out, no exfiltrating secrets, no hiding actions, never `rm -rf /`-style host destruction. Everything else is native and unlimited. |
@@ -311,7 +311,87 @@ goda run "log into https://example.com/app and tell me today's open tickets"
 | `browser_wait` | 1 | Wait for a selector to appear/disappear, or pause. Use before reading async pages. |
 | `browser_screenshot` | 2 | Save a PNG (`full_page: true` captures the whole page). |
 | `browser_eval` | 5 | Run JavaScript in the page. Escape hatch for dropdowns, scrolling, infinite lists. |
+| `browser_stealth_check` | 1 | Report what a bot-detection script sees and how many fingerprint checks pass. |
 | `browser_close` | 1 | Close the browser and flush cookies/session to disk. |
+
+### Anti-bot detection
+
+A stock Playwright launch is trivially fingerprinted: `navigator.webdriver` is
+`true`, `window.chrome` is missing, the UA contains `HeadlessChrome`, WebGL
+reports a software renderer, and CDP leaves `cdc_*` markers on the document.
+Any one of them is enough to get flagged.
+
+Stealth mode is **on by default** and patches roughly a dozen signals — but the
+part that matters is that it keeps them **mutually consistent**. A UA claiming
+Chrome on Windows alongside `navigator.userAgentData.platform === "Linux"` and
+a Mesa WebGL renderer is *more* suspicious than no patch at all, because no real
+browser produces that combination. Everything derives from one device profile:
+
+```bash
+goda settings browser.stealth.profile windows-chrome   # | macos-chrome | linux-chrome
+```
+
+Verify rather than assume — point it at a fingerprinting page and read the report:
+
+```
+$ goda run "open https://example.com and run a stealth check"
+
+stealth: on  profile: windows-chrome  ->  13/13  [CLEAN]
+PASS  navigator.webdriver             undefined
+PASS  'webdriver' in navigator        False
+PASS  window.chrome present           True
+PASS  no headless UA token            clean
+PASS  plugins populated               5 plugins
+PASS  languages set                   en-US,en
+PASS  hardwareConcurrency             8
+PASS  deviceMemory                    8
+PASS  window chrome offset            outer-inner=85px
+PASS  no cdc_ markers                 0 markers
+PASS  permissions toString native     True
+PASS  platform consistency            platform=Win32 uaData=Windows
+PASS  WebGL not software              ANGLE (Intel, Intel(R) UHD Graphics 620 ...)
+```
+
+**What it defeats:** passive fingerprinting — the browser stops advertising
+that it is automated. Also included is *humanized* interaction: random
+per-keystroke delays, cursor movement in steps with jitter rather than
+teleporting, and idle pauses between actions, since machine-cadence requests
+are a signal in themselves.
+
+**What it does not do:** it will not solve CAPTCHAs, and it will not rotate
+through proxy or identity pools. Those systems exist specifically to stop
+abuse; circumventing them is a different thing from not looking like a default
+headless browser. Use this to test your own defences, drive your own accounts,
+and automate against services you are permitted to automate. `browser.proxy`
+accepts a **single static** proxy (corporate egress, geo-testing) — it is
+deliberately not a rotation pool.
+
+Being invisible is not the same as being polite, so request pacing is on
+independently: `browser.polite` honours `robots.txt` and rate-limits to 30
+requests/minute per host by default. Both can be switched off.
+
+```jsonc
+"browser": {
+  "stealth": {
+    "enabled": true,
+    "profile": "windows-chrome",
+    "humanize": {
+      "enabled": true,
+      "typing_delay_ms": [40, 130],   // random delay per keystroke
+      "mouse_steps": [8, 25],         // intermediate cursor move steps
+      "pause_ms": [300, 1200]         // idle between actions
+    }
+  },
+  "proxy": { "server": "", "username": "", "password": "", "bypass": "" },
+  "polite": {
+    "enabled": true,
+    "robots_txt": true,
+    "user_agent_token": "GodAgent",
+    "min_delay_ms": 1000,
+    "max_requests_per_minute": 30
+  }
+}
+```
 
 ### Why it's a toolset and not an MCP server
 
@@ -371,6 +451,10 @@ unaffected.
 | `Executable doesn't exist at .../chrome-headless-shell` | The Chromium binary was never downloaded | Run `playwright install chromium`. |
 | Browser launch fails on a minimal container | Missing shared system libraries | `playwright install --with-deps chromium` (needs root), or use the distro Chromium package. |
 | Agent reads a blank/stale page | Content loads asynchronously | Add a `browser_wait` step for the selector before extracting. |
+| `browser_stealth_check` shows FAIL rows | Stealth off, or an explicit `user_agent` was set | Set `browser.stealth.enabled` true, or clear `browser.user_agent` so the profile's UA applies. |
+| `ERROR: disallowed by .../robots.txt` | The site opts out of automated access | Confirm you are permitted to automate it, then set `browser.polite.robots_txt=false`. |
+| `ERROR: rate limit reached for <host>` | More than `max_requests_per_minute` in a minute | Wait, or raise `browser.polite.max_requests_per_minute`. |
+| Typing is very slow | Humanized keystroke delay | Lower `browser.stealth.humanize.typing_delay_ms`, or set `humanize.enabled=false`. |
 
 ## Policy — read & tune before going to production
 
@@ -418,7 +502,8 @@ god_agent/          the agent (zero third-party runtime dependencies for the
   api.py            optional HTTP API
   static/           dashboard
   tools/            shell, files, system (GPU/process/sysctl/cron), memory,
-                    brain, network, browser (headless Chromium), self, evolve
+                    brain, network, browser (headless Chromium), stealth
+                    (anti-bot-detection), self, evolve
 install.sh          installer (--desktop / --local / system-wide)
 install_local.sh    user app, launchers, and Linux application-menu integration
 uninstall.sh        removal
@@ -443,6 +528,7 @@ docs/               constitution, brain, safety, architecture, consciousness
 - [x] Extensible agent registry (`goda catalog`, `~/.god-agent/agents.json`, `agents.d/`)
 - [x] MCP client (connect external agent/tool servers: stdio, SSE, streamable-HTTP)
 - [x] Real browser automation (headless Chromium: JS, cookies, sessions; policy-graded + audited)
+- [x] Anti-bot-detection hardening (consistent device profiles, humanized input, `browser_stealth_check` verification)
 - [ ] Real-time alert rules (thresholds on metrics)
 - [ ] Vault/KMS integration for Brain credentials
 

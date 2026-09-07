@@ -29,14 +29,16 @@ except ImportError:  # pragma: no cover
     pytest = None
 
 from god_agent.config import default_config  # noqa: E402
-from god_agent.policy import Policy, TOOL_RISK, NETWORK_TOOLS  # noqa: E402
+from god_agent.policy import (  # noqa: E402
+    Policy, TOOL_RISK, NETWORK_TOOLS, LOCAL_BROWSER_TOOLS,
+)
 from god_agent.runtime import Runtime  # noqa: E402
 from god_agent.tools import browser as B  # noqa: E402
 
 BROWSER_TOOLS = [
     "browser_open", "browser_click", "browser_type", "browser_extract",
     "browser_links", "browser_wait", "browser_screenshot", "browser_eval",
-    "browser_close",
+    "browser_stealth_check", "browser_close",
 ]
 
 
@@ -52,6 +54,7 @@ class FakePage:
         self.title_text = "Fake Page"
         self.is_closed_flag = False
         self.calls = []
+        self.mouse = FakeMouse()
         self.content = {
             "body": "Welcome back, operator.\nYour last login was Tuesday.",
             "h1": "Dashboard",
@@ -110,14 +113,84 @@ class FakePage:
     def eval_on_selector_all(self, sel, script):
         return self.links
 
+    def query_selector(self, sel):
+        self.calls.append(("query_selector", sel))
+        return FakeElement(sel)
+
     def evaluate(self, script):
         self.calls.append(("evaluate", script))
+        # Simulate the browser answering the stealth fingerprint probe. The
+        # fake cannot run JS, so it derives the answer from what was actually
+        # installed on the context — which is what we want to assert on.
+        if "UNMASKED_VENDOR_WEBGL" in script:
+            return self.simulated_probe()
         return {"evaluated": True, "len": len(script)}
+
+    def simulated_probe(self):
+        ctx = self.ctx
+        applied = bool(ctx.init_scripts)
+        ua = ctx.kwargs.get("user_agent") or "Mozilla/5.0 HeadlessChrome/131.0.0.0"
+        prof = {}
+        if applied:
+            import re
+
+            m = re.search(r"const P = (\{.*?\});\n", ctx.init_scripts[0], re.S)
+            if m:
+                try:
+                    prof = json.loads(m.group(1))
+                except ValueError:
+                    prof = {}
+        win = "Windows" in ua
+        mac = "Macintosh" in ua
+        claimed = "Windows" if win else ("macOS" if mac else "Linux")
+        return {
+            "userAgent": ua,
+            "headlessUA": "Headless" in ua,
+            "webdriver": None if applied else True,
+            "webdriverIn": False if applied else True,
+            "chrome": applied,
+            "plugins": 5 if applied else 0,
+            "languages": ["en-US", "en"] if applied else ["en-US"],
+            "platform": prof.get("platform", "Linux x86_64"),
+            "hardwareConcurrency": prof.get("hardware_concurrency", 2),
+            "deviceMemory": prof.get("device_memory", None),
+            "uaDataPlatform": prof.get("ua_data_platform") if applied else None,
+            "outerMinusInner": prof.get("chrome_height", 0) if applied else 0,
+            "screen": [prof.get("screen", {}).get("width", 1280),
+                       prof.get("screen", {}).get("height", 900)],
+            "devicePixelRatio": 1,
+            "cdc": 0 if applied else 3,
+            "permToStringNative": applied,
+            "webglVendor": prof.get("webgl_vendor") if applied else "Google Inc.",
+            "webglRenderer": prof.get("webgl_renderer") if applied else "Google SwiftShader",
+            "platformConsistent": (prof.get("ua_data_platform") == claimed) if applied else False,
+            "webglSoftware": not applied,
+        }
 
     def screenshot(self, path=None, full_page=False, timeout=None):
         with open(path, "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\nFAKE")
         self.calls.append(("screenshot", path, full_page))
+
+
+class FakeMouse:
+    def __init__(self):
+        self.moves = []
+        self.clicks = []
+
+    def move(self, x, y, steps=1):
+        self.moves.append((x, y, steps))
+
+    def click(self, x, y):
+        self.clicks.append((x, y))
+
+
+class FakeElement:
+    def __init__(self, selector):
+        self.selector = selector
+
+    def bounding_box(self):
+        return {"x": 100.0, "y": 200.0, "width": 120.0, "height": 40.0}
 
 
 class FakeContext:
@@ -128,6 +201,10 @@ class FakeContext:
         self.closed = False
         self.storage_writes = []
         self.pages = []
+        self.init_scripts = []
+
+    def add_init_script(self, script=None, **kwargs):
+        self.init_scripts.append(script)
 
     def set_default_timeout(self, ms):
         self.default_timeout = ms
@@ -257,19 +334,21 @@ def test_browser_tools_gated_by_network_policy():
 
 def test_all_network_reaching_browser_tools_are_gated():
     for tool in BROWSER_TOOLS:
-        if tool == "browser_close":
+        if tool in LOCAL_BROWSER_TOOLS:
             continue
         assert tool in NETWORK_TOOLS, f"{tool} escapes the network gate"
 
 
-def test_browser_close_stays_available_when_network_off():
-    """Closing is local cleanup, not network access.
+def test_local_browser_tools_stay_available_when_network_off():
+    """Close and stealth_check are local, not network access.
 
     If an operator disables `network.enabled` mid-run, the agent must still be
-    able to tear the browser down — otherwise the process leaks. So close is
-    deliberately *outside* the network gate even though it touches the session.
+    able to tear the browser down — otherwise the process leaks. And an
+    integrity probe that touches nothing remote has no reason to be gated.
+    Both are deliberately outside the network gate.
     """
     assert "browser_close" not in NETWORK_TOOLS
+    assert "browser_stealth_check" not in NETWORK_TOOLS
     cfg = default_config()
     cfg["policy"]["network"]["enabled"] = False
     p = Policy(cfg)
@@ -376,13 +455,32 @@ def test_type_press_enter_and_clear():
     try:
         with tempfile.TemporaryDirectory() as d:
             rt = make_rt(d)
+            # Keep the test fast; humanize types one char at a time.
+            rt.cfg["browser"]["stealth"]["humanize"]["typing_delay_ms"] = [0, 0]
             B.browser_open(rt.registry, "browser_open", {"url": "https://example.com"})
             B.browser_type(rt.registry, "browser_type",
                            {"selector": "#q", "text": "god agent", "press_enter": True})
             calls = B._SESSION["page"].calls
             assert ("fill", "#q") in calls          # cleared first
-            assert ("type", "#q", "god agent") in calls
+            # Humanized typing is per keystroke; joined, it must be the text.
+            typed = "".join(c[2] for c in calls if c[0] == "type" and len(c) > 2)
+            assert typed == "god agent", typed
             assert ("press", "#q", "Enter") in calls
+    finally:
+        uninstall_fake_playwright()
+
+
+def test_type_bulk_when_humanize_off():
+    install_fake_playwright()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            rt = make_rt(d)
+            rt.cfg["browser"]["stealth"]["humanize"]["enabled"] = False
+            B.browser_open(rt.registry, "browser_open", {"url": "https://example.com"})
+            B.browser_type(rt.registry, "browser_type",
+                           {"selector": "#q", "text": "god agent"})
+            calls = B._SESSION["page"].calls
+            assert ("type", "#q", "god agent") in calls
     finally:
         uninstall_fake_playwright()
 
@@ -562,18 +660,32 @@ def test_actions_are_audited():
 
 
 def test_errors_never_raise_out_of_the_tool():
+    """Both click paths must convert exceptions into ERROR strings.
+
+    Humanized clicking goes through query_selector + mouse; plain clicking goes
+    through page.click. A failure in either must not escape the tool.
+    """
     install_fake_playwright()
     try:
         with tempfile.TemporaryDirectory() as d:
             rt = make_rt(d)
+            rt.cfg["browser"]["stealth"]["humanize"]["pause_ms"] = [0, 0]
             B.browser_open(rt.registry, "browser_open", {"url": "https://example.com"})
 
             def boom(*a, **k):
                 raise RuntimeError("selector not found")
 
+            # --- humanized path ---
+            B._SESSION["page"].query_selector = boom
+            out = B.browser_click(rt.registry, "browser_click", {"selector": "#nope"})
+            assert out.startswith("ERROR:"), out
+            assert "selector not found" in out
+
+            # --- plain path ---
+            rt.cfg["browser"]["stealth"]["humanize"]["enabled"] = False
             B._SESSION["page"].click = boom
             out = B.browser_click(rt.registry, "browser_click", {"selector": "#nope"})
-            assert out.startswith("ERROR:")
+            assert out.startswith("ERROR:"), out
             assert "selector not found" in out
     finally:
         uninstall_fake_playwright()

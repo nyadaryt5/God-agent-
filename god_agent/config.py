@@ -119,9 +119,40 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "timeout_s": 30,           # per-action / navigation timeout
         "max_text_chars": 200_000, # cap on extracted text returned to the model
         "viewport": {"width": 1280, "height": 900},
-        "user_agent": "",          # empty = Playwright's default Chromium UA
+        "user_agent": "",          # empty = use the stealth profile's UA
         "allow_js": True,          # browser_eval escape hatch; disable to lock it down
         "state_path": "",          # empty = <state.root>/browser_state.json (cookies/session)
+        # Anti-bot-detection hardening (see god_agent/tools/stealth.py).
+        # Defeats passive fingerprinting: navigator.webdriver, missing
+        # window.chrome, HeadlessChrome UA, cdc_ markers, software WebGL,
+        # Client-Hints mismatch, and the missing browser-chrome offset.
+        # It does NOT solve CAPTCHAs and does not rotate proxies/identities.
+        "stealth": {
+            "enabled": True,
+            "profile": "windows-chrome",  # windows-chrome | macos-chrome | linux-chrome
+            "locale": "en-US",
+            "timezone": "",               # empty = the profile's default
+            "webgl_vendor": "",           # empty = the profile's default
+            "webgl_renderer": "",         # empty = the profile's default
+            "humanize": {
+                "enabled": True,
+                "typing_delay_ms": [40, 130],  # random per-keystroke delay
+                "mouse_steps": [8, 25],        # intermediate cursor move steps
+                "pause_ms": [300, 1200],       # idle between actions
+            },
+        },
+        # A single static proxy (corporate egress, geo-testing, your own exit
+        # IP). Deliberately not a rotation pool.
+        "proxy": {"server": "", "username": "", "password": "", "bypass": ""},
+        # Being a good citizen. Independent of stealth: looking like a human
+        # browser is not a licence to hammer someone's server.
+        "polite": {
+            "enabled": True,
+            "robots_txt": True,             # honour Disallow rules
+            "user_agent_token": "GodAgent", # which robots.txt group we match
+            "min_delay_ms": 1000,           # minimum gap between requests/host
+            "max_requests_per_minute": 30,
+        },
     },
     "kill_switch": {"path": "~/.god-agent/DISABLED"},
     "state": {"root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks"},

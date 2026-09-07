@@ -70,6 +70,7 @@ TOOL_RISK: dict[str, int] = {
     "browser_wait": 1,
     "browser_screenshot": 2,
     "browser_eval": 5,
+    "browser_stealth_check": 1,
     "browser_close": 1,
     "evolve": 6,
     "run_plan": 2,
@@ -81,6 +82,12 @@ TOOL_RISK: dict[str, int] = {
 NETWORK_TOOLS = {"fetch_url", "browser_open", "browser_click", "browser_type",
                  "browser_extract", "browser_links", "browser_wait",
                  "browser_screenshot", "browser_eval"}
+
+# Browser tools that only act on an already-open page: no network of their own.
+# They stay available when network is switched off — closing must never be
+# blocked (it would leak the browser process) and a local integrity probe
+# touches nothing remote.
+LOCAL_BROWSER_TOOLS = {"browser_close", "browser_stealth_check"}
 
 # Commands that always require a human (or sovereign autonomy).
 ALWAYS_ASK_PATTERNS = [

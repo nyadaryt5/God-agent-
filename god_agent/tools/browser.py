@@ -28,9 +28,12 @@ from __future__ import annotations
 
 import atexit
 import os
+import random
+import time
 from typing import Any, Optional
 
 from ..runtime import get_runtime
+from . import stealth
 
 # ---------------------------------------------------------------------------
 # Module state: one browser session reused across tool calls.
@@ -64,6 +67,11 @@ def _cfg(rt) -> dict[str, Any]:
         "user_agent": b.get("user_agent") or "",
         "allow_js": bool(b.get("allow_js", True)),
         "state_path": os.path.expanduser(state_path),
+        # Anti-bot hardening (see tools/stealth.py).
+        "stealth": b.get("stealth") or {},
+        "proxy": b.get("proxy") or {},
+        # Being a good citizen: robots.txt + request pacing.
+        "polite": b.get("polite") or {},
     }
 
 
@@ -125,20 +133,35 @@ def _ensure(rt) -> Any:
     if _SESSION["page"] is None:
         sync_playwright = _import_playwright()
         pw = sync_playwright().start()
+
+        st = conf["stealth"]
+        stealth_on = bool(st.get("enabled", True))
+        profile_name = str(st.get("profile") or stealth.DEFAULT_PROFILE)
+        profile = stealth.get_profile(profile_name, {
+            "webgl_vendor": st.get("webgl_vendor", ""),
+            "webgl_renderer": st.get("webgl_renderer", ""),
+            "timezone": st.get("timezone", ""),
+            "locale": st.get("locale", ""),
+        }) if stealth_on else None
+
         try:
-            launch_kwargs: dict[str, Any] = {
-                "headless": conf["headless"],
-                "args": ["--no-sandbox", "--disable-dev-shm-usage"],
-            }
+            if stealth_on and profile:
+                launch_kwargs = stealth.launch_kwargs(conf, conf["proxy"])
+            else:
+                launch_kwargs = {
+                    "headless": conf["headless"],
+                    "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+                }
             browser = pw.chromium.launch(**launch_kwargs)
         except Exception:
             pw.stop()
             raise
 
-        ctx_kwargs: dict[str, Any] = {
-            "viewport": conf["viewport"],
-            "ignore_https_errors": False,
-        }
+        if stealth_on and profile:
+            ctx_kwargs = stealth.context_kwargs(conf, profile)
+        else:
+            ctx_kwargs = {"viewport": conf["viewport"], "ignore_https_errors": False}
+        # An explicit operator UA always wins over the stealth profile's.
         if conf["user_agent"]:
             ctx_kwargs["user_agent"] = conf["user_agent"]
         if os.path.isfile(conf["state_path"]):
@@ -150,6 +173,14 @@ def _ensure(rt) -> Any:
 
         context = browser.new_context(**ctx_kwargs)
         context.set_default_timeout(conf["timeout_ms"])
+        # Injected on the context so it also covers popups and later pages.
+        if stealth_on and profile and not conf["user_agent"]:
+            try:
+                context.add_init_script(
+                    stealth.init_script(profile, ctx_kwargs["viewport"])
+                )
+            except Exception:
+                pass
         page = context.new_page()
 
         _SESSION.update(
@@ -192,6 +223,98 @@ def _check_url(url: str) -> Optional[str]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Being a good citizen: robots.txt + request pacing.
+#
+# Stealth stops the browser advertising that it is automated; it does not make
+# hammering someone's server acceptable. These two are independent of stealth
+# and can be switched off, but they default to on.
+# ---------------------------------------------------------------------------
+_HITS: dict[str, list[float]] = {}
+
+
+def _rate_limit(host: str, polite: dict) -> Optional[str]:
+    """Enforce a minimum delay and a requests-per-minute ceiling per host."""
+    if not polite.get("enabled", True):
+        return None
+    now = time.time()
+    min_delay = int(polite.get("min_delay_ms", 1000)) / 1000.0
+    per_min = int(polite.get("max_requests_per_minute", 30))
+
+    hits = _HITS.setdefault(host, [])
+    hits[:] = [t for t in hits if now - t < 60.0]
+
+    if per_min > 0 and len(hits) >= per_min:
+        wait = 60.0 - (now - hits[0])
+        return (f"ERROR: rate limit reached for {host} "
+                f"({per_min}/min). Retry in {wait:.0f}s, or raise "
+                f"browser.polite.max_requests_per_minute.")
+    if hits and min_delay > 0:
+        gap = now - hits[-1]
+        if gap < min_delay:
+            time.sleep(min_delay - gap)
+    hits.append(time.time())
+    return None
+
+
+def _robots_allows(url: str, polite: dict, timeout: int = 10) -> tuple[bool, str]:
+    """Minimal robots.txt check for the given URL.
+
+    Returns (allowed, reason). Fails open — an unreachable or missing
+    robots.txt is treated as allowed, per the spec — but a reachable one that
+    disallows the path is honoured.
+    """
+    if not polite.get("enabled", True) or not polite.get("robots_txt", True):
+        return True, "robots check disabled"
+    try:
+        import urllib.parse
+        import urllib.request
+
+        parts = urllib.parse.urlparse(url)
+        if not parts.scheme.startswith("http"):
+            return True, "non-http"
+        robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
+        token = str(polite.get("user_agent_token", "GodAgent")).lower()
+        try:
+            with urllib.request.urlopen(robots_url, timeout=timeout) as resp:  # noqa: S310
+                body = resp.read(200_000).decode("utf-8", "replace")
+        except Exception:
+            return True, "no robots.txt (treated as allowed)"
+
+        # Minimal parser: track the most specific matching user-agent group.
+        path = parts.path or "/"
+        if parts.query:
+            path += "?" + parts.query
+        rules: list[tuple[str, bool]] = []
+        applies = False
+        for raw in body.splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line or ":" not in line:
+                continue
+            key, _, val = line.partition(":")
+            key, val = key.strip().lower(), val.strip()
+            if key == "user-agent":
+                ua = val.lower()
+                applies = (ua == "*") or token.startswith(ua) or ua in token
+            elif applies and key in ("disallow", "allow"):
+                if val == "":
+                    # "Disallow:" with an empty value means allow everything.
+                    rules.append(("/", key == "allow"))
+                else:
+                    rules.append((val, key == "allow"))
+        # Longest matching rule wins, per the robots.txt spec.
+        best: Optional[tuple[int, bool]] = None
+        for prefix, allowed in rules:
+            if path.startswith(prefix):
+                if best is None or len(prefix) > best[0]:
+                    best = (len(prefix), allowed)
+        if best is not None and not best[1]:
+            return False, f"disallowed by {robots_url} (rule: {best[1]})"
+        return True, f"allowed by {robots_url}"
+    except Exception as e:  # noqa: BLE001
+        return True, f"robots check skipped: {e}"
+
+
 def _err(rt, action: str, exc: BaseException) -> str:
     """Uniform, audited error rendering."""
     if isinstance(exc, BrowserUnavailable):
@@ -219,6 +342,18 @@ def browser_open(reg, name: str, args: dict) -> str:
     if wait_until not in ("load", "domcontentloaded", "networkidle", "commit"):
         return "ERROR: wait_until must be load|domcontentloaded|networkidle|commit"
 
+    # Pace requests and honour robots.txt before touching the network.
+    import urllib.parse  # noqa: PLC0415
+
+    host = urllib.parse.urlparse(url).netloc
+    if limit := _rate_limit(host, conf["polite"]):
+        return limit
+    allowed, why = _robots_allows(url, conf["polite"])
+    if not allowed:
+        rt.record("browser_open", f"BLOCKED {url} ({why})", {"url": url, "reason": why})
+        return (f"ERROR: {why}. Set browser.polite.robots_txt=false "
+                f"(or browser.polite.enabled=false) to override.")
+
     try:
         page = _ensure(rt)
         resp = page.goto(url, wait_until=wait_until, timeout=conf["timeout_ms"])
@@ -244,6 +379,23 @@ def browser_click(reg, name: str, args: dict) -> str:
         return "ERROR: selector required"
     try:
         page = _ensure(rt)
+        hum = conf["stealth"].get("humanize", {})
+        if hum.get("enabled"):
+            el = page.query_selector(sel)
+            if el is not None:
+                box = el.bounding_box()
+                if box:
+                    # Aim at a random point inside the element, not dead centre.
+                    tx = box["x"] + box["width"] * random.uniform(0.25, 0.75)
+                    ty = box["y"] + box["height"] * random.uniform(0.25, 0.75)
+                    stealth.human_mouse_move(page, tx, ty, hum)
+                    page.mouse.click(tx, ty)
+                    page.wait_for_timeout(300)
+                    _save_state()
+                    stealth.human_pause(hum)
+                    rt.record("browser_click", f"clicked {sel}",
+                              {"selector": sel, "url": page.url, "humanized": True})
+                    return f"ok: clicked {sel} (now at {page.url})"
         page.click(sel, timeout=conf["timeout_ms"])
         page.wait_for_timeout(300)  # let click handlers settle
         _save_state()
@@ -267,9 +419,17 @@ def browser_type(reg, name: str, args: dict) -> str:
 
     try:
         page = _ensure(rt)
+        hum = conf["stealth"].get("humanize", {})
         if clear:
             page.fill(sel, "", timeout=conf["timeout_ms"])
-        page.type(sel, text, timeout=conf["timeout_ms"], delay=delay)
+        if hum.get("enabled") and text:
+            # Per-keystroke jitter. Bulk typing with a fixed delay has a
+            # perfectly flat cadence, which is itself machine-like.
+            for ch in text:
+                page.type(sel, ch, timeout=conf["timeout_ms"])
+                time.sleep(stealth.char_delay(hum))
+        else:
+            page.type(sel, text, timeout=conf["timeout_ms"], delay=delay)
         if press_enter:
             page.press(sel, "Enter", timeout=conf["timeout_ms"])
             page.wait_for_timeout(500)
@@ -416,6 +576,32 @@ def browser_eval(reg, name: str, args: dict) -> str:
         return _err(rt, "browser_eval", exc)
 
 
+def browser_stealth_check(reg, name: str, args: dict) -> str:
+    """Report what a bot-detection script would see on the current page.
+
+    Runs ~13 fingerprinting probes and scores them. Use it after `browser_open`
+    to confirm the hardening is actually applied rather than assuming it is.
+    """
+    rt = get_runtime()
+    try:
+        page = _ensure(rt)
+        probe = page.evaluate(stealth.PROBE_JS)
+        if not isinstance(probe, dict):
+            return f"ERROR: unexpected probe result: {probe!r}"
+        checks, passed, total = stealth.score_probe(probe)
+        lines = [f"{'PASS' if ok else 'FAIL'}  {what:<32} {observed}" for what, ok, observed in checks]
+        verdict = "CLEAN" if passed == total else ("LEAKING" if passed < total - 2 else "PARTIAL")
+        st = rt.cfg.get("browser", {}).get("stealth", {})
+        header = (f"stealth: {'on' if st.get('enabled', True) else 'off'}"
+                  f"  profile: {st.get('profile') or stealth.DEFAULT_PROFILE}"
+                  f"  ->  {passed}/{total}  [{verdict}]")
+        rt.record("browser_stealth_check", f"stealth check {passed}/{total} ({verdict})",
+                  {"passed": passed, "total": total, "verdict": verdict, "url": page.url})
+        return header + "\n" + "\n".join(lines)
+    except Exception as exc:  # noqa: BLE001
+        return _err(rt, "browser_stealth_check", exc)
+
+
 def browser_close(reg, name: str, args: dict) -> str:
     """Close the browser, flushing cookies/session to disk."""
     rt = get_runtime()
@@ -443,5 +629,6 @@ def is_available() -> bool:
 __all__ = [
     "browser_open", "browser_click", "browser_type", "browser_extract",
     "browser_links", "browser_wait", "browser_screenshot", "browser_eval",
-    "browser_close", "is_available", "BrowserUnavailable", "_teardown",
+    "browser_stealth_check", "browser_close", "is_available",
+    "BrowserUnavailable", "_teardown",
 ]

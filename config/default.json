@@ -55,7 +55,29 @@
     "viewport": { "width": 1280, "height": 900 },
     "user_agent": "",
     "allow_js": true,
-    "state_path": ""
+    "state_path": "",
+    "stealth": {
+      "enabled": true,
+      "profile": "windows-chrome",
+      "locale": "en-US",
+      "timezone": "",
+      "webgl_vendor": "",
+      "webgl_renderer": "",
+      "humanize": {
+        "enabled": true,
+        "typing_delay_ms": [40, 130],
+        "mouse_steps": [8, 25],
+        "pause_ms": [300, 1200]
+      }
+    },
+    "proxy": { "server": "", "username": "", "password": "", "bypass": "" },
+    "polite": {
+      "enabled": true,
+      "robots_txt": true,
+      "user_agent_token": "GodAgent",
+      "min_delay_ms": 1000,
+      "max_requests_per_minute": 30
+    }
   },
   "kill_switch": { "path": "~/.god-agent/DISABLED" },
   "state": { "root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks" }

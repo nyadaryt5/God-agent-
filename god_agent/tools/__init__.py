@@ -176,6 +176,10 @@ class ToolRegistry:
             _browser.browser_eval: ("Run JavaScript in the page and return the result. Escape "
                                     "hatch for dropdowns, scrolling, and infinite lists.",
                                     {"script": {"type": "string", "required": True}}),
+            _browser.browser_stealth_check: ("Report what a bot-detection script would see on "
+                                             "the current page and how many fingerprint checks "
+                                             "pass. Run after browser_open to verify hardening.",
+                                             {}),
             _browser.browser_close: ("Close the browser and save cookies/session to disk.",
                                      {}),
             evolve: ("Evolve yourself: propose validated, tested changes to your own source.",

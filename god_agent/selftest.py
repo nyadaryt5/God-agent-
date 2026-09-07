@@ -198,11 +198,11 @@ def _t_browser_tools_registered_and_gated():
     valid on a fresh server with no Playwright installed.
     """
     from .config import default_config
-    from .policy import Policy, TOOL_RISK, NETWORK_TOOLS
+    from .policy import Policy, TOOL_RISK, NETWORK_TOOLS, LOCAL_BROWSER_TOOLS
 
     names = ["browser_open", "browser_click", "browser_type", "browser_extract",
              "browser_links", "browser_wait", "browser_screenshot",
-             "browser_eval", "browser_close"]
+             "browser_eval", "browser_stealth_check", "browser_close"]
     for n in names:
         assert n in TOOL_RISK, f"{n} is ungraded — it would bypass risk policy"
 
@@ -216,18 +216,41 @@ def _t_browser_tools_registered_and_gated():
     off["policy"]["network"]["enabled"] = False
     p = Policy(off)
     for n in names:
-        if n == "browser_close":
+        if n in LOCAL_BROWSER_TOOLS:
             continue
         assert not p.assess(n, {"url": "https://example.com"}).allowed, \
             f"{n} survives network.enabled=false"
 
-    # ...except close, which is local cleanup and must always work.
-    assert "browser_close" not in NETWORK_TOOLS
-    assert p.assess("browser_close", {}).allowed
+    # ...except close (local cleanup; blocking it leaks the browser process)
+    # and stealth_check (a local integrity probe that touches nothing remote).
+    for n in LOCAL_BROWSER_TOOLS:
+        assert n not in NETWORK_TOOLS, f"{n} is gated but must stay available"
+        assert p.assess(n, {}).allowed, f"{n} refused with network off"
 
     cfg = default_config()
     assert cfg["browser"]["headless"] is True
     assert cfg["browser"]["allow_js"] is True
+    assert cfg["browser"]["stealth"]["enabled"] is True
+    assert cfg["browser"]["polite"]["robots_txt"] is True
+
+    # Stealth profiles must be internally consistent: a UA claiming one OS
+    # while Client Hints reports another is more suspicious than no patch.
+    from .tools import stealth
+
+    for pname in ("windows-chrome", "macos-chrome", "linux-chrome"):
+        prof = stealth.get_profile(pname)
+        ua, platform = prof["user_agent"], prof["ua_data_platform"]
+        if "Windows" in ua:
+            assert platform == "Windows", pname
+        elif "Macintosh" in ua:
+            assert platform == "macOS", pname
+        else:
+            assert platform == "Linux", pname
+        assert "Headless" not in ua, f"{pname} UA advertises headless"
+        assert "SwiftShader" not in prof["webgl_renderer"], f"{pname} uses a software renderer"
+        assert prof["hardware_concurrency"] >= 2
+        # The window must fit inside the screen, or the geometry check fails.
+        assert prof["screen"]["height"] >= 720
 
 
 TESTS: list[tuple[str, Callable[[], None]]] = [
