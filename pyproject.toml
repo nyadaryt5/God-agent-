@@ -27,6 +27,9 @@ agents = ["openai-agents>=0.10"]
 # Real browser automation: headless Chromium with JS, cookies, and sessions.
 # After installing, fetch the browser binary once: `playwright install chromium`
 browser = ["playwright>=1.40"]
+# Documents + image editing. md/html render with stdlib; pdf reuses the
+# browser extra; docx and image editing need these two packages.
+docs = ["python-docx>=1.1", "pillow>=10"]
 crewai = ["crewai>=0.100"]
 langgraph = ["langgraph>=0.2"]
 hermes = ["hermes-agent>=0.18"]

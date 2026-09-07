@@ -33,6 +33,8 @@ loop*, which is the honest, engineering version of "consciousness". See
 | **Vision** | `image_analyze` actually *looks* at an image. This is what makes `browser_screenshot` useful: capture a page, then read it. Also reads diagrams, charts, and error dialogs. |
 | **Image generation** | `image_generate` produces diagrams and graphics from a prompt — architecture diagrams, network topologies. |
 | **Speech** | `speak` turns text into an audio file. A monitoring agent that says "disk critical on db-01" beats one that writes another log line; set `media.play_audio` to hear it. |
+| **Documents with images** | Eleven `doc_*` tools build a real document — headings, text, code, quotes, **embedded images**, page breaks — stored as an editable block model, rendering to **md / html / pdf / docx**. Edit block 3 without regenerating the rest. See [Documents](#documents-with-images). |
+| **Image editing** | `image_info` / `image_edit` / `image_compose` — resize, crop, rotate, convert, and build before/after grids, so screenshots are the right size before they go in a report. |
 | **LLM-agnostic** | **Kira is the default** (`https://kiraai.vn/api/v1`, model `kira-3.5-flash`). Also supports OpenAI-compatible (OpenAI, OpenRouter, Ollama, vLLM, LM Studio...), Anthropic, or offline **mock mode** with a built-in heuristic planner so it's usable with zero API keys. |
 
 ## Step-by-step setup on Linux
@@ -534,6 +536,105 @@ hand it to the next step.
 
 All four are gated by `policy.network.enabled`.
 
+## Documents with images
+
+God-Agent could produce text and it could produce images, but it had no way to
+**put them together**. "Screenshot the dashboard, search for the error, and
+write me a report" ended in a pile of loose files.
+
+A document is an ordered list of **blocks** (heading / text / code / quote /
+image / page break) stored as JSON, next to an assets folder holding its
+images. Editing is by block index, so the agent can revise one paragraph
+without regenerating everything around it.
+
+```bash
+goda run "screenshot the status page, then write me a PDF incident report with the screenshot and a summary"
+```
+
+### The tools
+
+| Tool | What it does |
+|---|---|
+| `doc_create` | Create a document (title, assets folder) |
+| `doc_add_heading` | Heading, level 1–6 |
+| `doc_add_text` | Paragraph |
+| `doc_add_code` | Fenced code block |
+| `doc_add_quote` | Block quote |
+| `doc_add_page_break` | Page break (pdf/docx) |
+| `doc_add_image` | **Embed an image** — copies it into the document's assets |
+| `doc_outline` | List blocks with indices (run before editing) |
+| `doc_edit` | Replace one block's content, in place |
+| `doc_remove` | Delete a block |
+| `doc_render` | Render to `md` / `html` / `pdf` / `docx` |
+
+### Why a block model instead of "just write a file"
+
+Because revising is the hard part. With a raw file, fixing paragraph 3 means
+regenerating the whole document — and re-embedding every image. With blocks:
+
+```
+$ goda run "fix the summary paragraph in report"
+
+[0] heading     Summary
+[1] text        Disk filled up at 03:14 UTC.        <- edit just this
+[2] code        df -h
+[3] image       dash.png  Dashboard at 03:14
+```
+
+```bash
+goda run "open report, edit block 1 with the corrected timeline, re-render to pdf"
+```
+
+One document renders to **every** format, so re-rendering after an edit is
+cheap and nothing gets rebuilt by hand.
+
+### Rendering
+
+| Format | Needs | Notes |
+|---|---|---|
+| `md` | nothing | references `assets/…` relatively — stays readable and diffable |
+| `html` | nothing | single self-contained file, images base64-embedded |
+| `pdf` | Playwright + Chromium | HTML printed through the headless browser the tools already use |
+| `docx` | `pip install 'god-agent[docs]'` | real `.docx` with pictures |
+
+Images are base64-embedded in HTML and PDF because those are meant to be
+emailed as one file. Markdown deliberately does **not** inline them — a
+markdown file with a 500 KB image blob pasted into it is unreadable, and the
+assets folder already sits right beside it.
+
+### Image editing
+
+The step between `browser_screenshot` / `image_generate` and `doc_add_image`:
+
+```bash
+goda run "resize the screenshot to 800px wide and drop it in the report"
+goda run "compose the before and after screenshots side by side"
+```
+
+```jsonc
+"docs": {
+  "enabled": true,
+  "default_format": "md",
+  "embed_images": true,      // html/pdf only; md always references files
+  "pdf_format": "A4",
+  "max_image_mb": 25,
+  "output_dir": ""           // empty = render next to the document
+},
+"imaging": { "enabled": true, "max_image_mb": 25, "jpeg_quality": 90 }
+```
+
+`image_edit` operations apply in a fixed order — crop → resize → rotate →
+flip → grayscale → convert — and the source file is never modified unless you
+pass it as `out`.
+
+### Risk grades
+
+Reading (`doc_outline`, `image_info`) is 1. Adding blocks is 2. Anything that
+writes to disk (`doc_create`, `doc_edit`, `doc_remove`, `image_edit`,
+`image_compose`) is 3, matching `write_file`. These are local file operations,
+so unlike the search and media tools they are **not** gated by
+`policy.network.enabled`.
+
 ## Troubleshooting
 
 | Issue | Cause | Solution |
@@ -554,6 +655,12 @@ All four are gated by `policy.network.enabled`.
 | `ERROR: disallowed by .../robots.txt` | The site opts out of automated access | Confirm you are permitted to automate it, then set `browser.polite.robots_txt=false`. |
 | `ERROR: rate limit reached for <host>` | More than `max_requests_per_minute` in a minute | Wait, or raise `browser.polite.max_requests_per_minute`. |
 | Typing is very slow | Humanized keystroke delay | Lower `browser.stealth.humanize.typing_delay_ms`, or set `humanize.enabled=false`. |
+| `ERROR: document already exists` | `doc_create` refuses to clobber | Pass `overwrite=true`, or `doc_outline` the existing one and edit it. |
+| `ERROR: no such document` (doc_add_*) | Document was never created | Run `doc_create` first. |
+| `ERROR: DOCX rendering needs python-docx` | Optional extra missing | `pip install 'god-agent[docs]'`. |
+| `ERROR: PDF rendering needs Playwright` | Browser extra missing | `pip install 'god-agent[browser]' && playwright install chromium`. |
+| `ERROR: image editing needs Pillow` | Pillow missing | `pip install pillow` (or `pip install 'god-agent[docs]'`). |
+| Images missing from rendered markdown | Relative refs resolve against the assets folder | Keep the `.assets` folder next to the `.md`, or render `html`/`pdf` instead. |
 | `ERROR: search is disabled` | `search.enabled` is false | Set `goda settings search.enabled true`. |
 | `ERROR: brave backend needs search.api_key` | Keyed backend with no key | Supply `search.api_key`, or switch to the keyless `duckduckgo` backend. |
 | `ERROR: this provider does not implement /images/generations` | Endpoint lacks that surface | Point `media.base_url` at a provider that offers it. |
@@ -608,7 +715,8 @@ god_agent/          the agent (zero third-party runtime dependencies for the
   tools/            shell, files, system (GPU/process/sysctl/cron), memory,
                     brain, network, browser (headless Chromium), stealth
                     (anti-bot-detection), search (web), media (vision/image/
-                    speech), self, evolve
+                    speech), docs (block-model documents), imaging (edit),
+                    self, evolve
 install.sh          installer (--desktop / --local / system-wide)
 install_local.sh    user app, launchers, and Linux application-menu integration
 uninstall.sh        removal
@@ -635,6 +743,7 @@ docs/               constitution, brain, safety, architecture, consciousness
 - [x] Real browser automation (headless Chromium: JS, cookies, sessions; policy-graded + audited)
 - [x] Anti-bot-detection hardening (consistent device profiles, humanized input, `browser_stealth_check` verification)
 - [x] Web search (keyless DuckDuckGo default + Brave/Tavily/SearXNG), vision, image generation, speech
+- [x] Documents with images (block model, edit in place, render md/html/pdf/docx) + image editing
 - [ ] Real-time alert rules (thresholds on metrics)
 - [ ] Vault/KMS integration for Brain credentials
 

@@ -105,6 +105,20 @@
     "max_prompt_chars": 4000,
     "timeout_s": 180
   },
+  "docs": {
+    "enabled": true,
+    "default_format": "md",
+    "embed_images": true,
+    "pdf_format": "A4",
+    "max_image_mb": 25,
+    "output_dir": ""
+  },
+  "imaging": {
+    "enabled": true,
+    "max_image_mb": 25,
+    "jpeg_quality": 90,
+    "default_format": "png"
+  },
   "kill_switch": { "path": "~/.god-agent/DISABLED" },
   "state": { "root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks" }
 }

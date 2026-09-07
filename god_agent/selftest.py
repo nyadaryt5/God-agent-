@@ -295,6 +295,75 @@ def _t_search_and_media_tools_graded():
     assert cfg["media"]["api_key"] == ""
 
 
+def _t_docs_and_imaging_graded():
+    """Document + image tools must be graded; markdown rendering is pure.
+
+    Renders a document from an in-memory block list, so it needs no Pillow,
+    no python-docx, and no filesystem.
+    """
+    from .config import default_config
+    from .policy import TOOL_RISK
+    from .tools import docs as D
+
+    names = ["doc_create", "doc_add_heading", "doc_add_text", "doc_add_code",
+             "doc_add_image", "doc_add_quote", "doc_add_page_break",
+             "doc_outline", "doc_edit", "doc_remove", "doc_render",
+             "image_info", "image_edit", "image_compose"]
+    for n in names:
+        assert n in TOOL_RISK, f"{n} is ungraded — it would bypass risk policy"
+
+    # Anything that writes to disk is a 3; pure reads are a 1.
+    assert TOOL_RISK["doc_outline"] == 1
+    assert TOOL_RISK["image_info"] == 1
+    for n in ("doc_create", "doc_edit", "doc_remove", "image_edit", "image_compose"):
+        assert TOOL_RISK[n] == 3, f"{n} writes to disk but is graded {TOOL_RISK[n]}"
+
+    # Path normalisation: name and name.gdoc.json must be one document.
+    j1, a1 = D._paths("/tmp/report")
+    j2, a2 = D._paths("/tmp/report.gdoc.json")
+    assert j1 == j2 and a1 == a2
+
+    # Markdown rendering is a pure function of the block list.
+    doc = {
+        "title": "T",
+        "blocks": [
+            {"kind": "heading", "level": 2, "text": "H"},
+            {"kind": "text", "text": "body"},
+            {"kind": "code", "text": "df -h", "language": "bash"},
+            {"kind": "image", "path": "s.png", "caption": "cap", "alt": "alt"},
+            {"kind": "quote", "text": "quoted"},
+            {"kind": "page_break", "text": ""},
+        ],
+    }
+    md = D.render_markdown(doc, "/tmp/report.assets", embed=False)
+    assert md.startswith("# T")
+    assert "## H" in md
+    assert "```bash" in md and "df -h" in md
+    assert "![alt](report.assets/s.png)" in md, md
+    assert "*cap*" in md and "> quoted" in md
+
+    # Embedding reads the real file, so build one: a valid 1x1 PNG, written
+    # with stdlib only (no Pillow) to keep this selftest dependency-free.
+    with tempfile.TemporaryDirectory() as tmp:
+        import base64
+
+        assets = os.path.join(tmp, "report.assets")
+        os.makedirs(assets, exist_ok=True)
+        with open(os.path.join(assets, "s.png"), "wb") as fh:
+            fh.write(base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/wD/9p0AAAAASUVORK5CYII="
+            ))
+        embedded = D.render_markdown(doc, assets, embed=True)
+        assert "data:image/png;base64," in embedded, "embedding did not inline the image"
+        # ...and a missing file degrades to a plain reference, not a crash.
+        missing = D.render_markdown(doc, os.path.join(tmp, "nope"), embed=True)
+        assert "nope/s.png" in missing
+
+    cfg = default_config()
+    assert cfg["docs"]["enabled"] is True
+    assert cfg["imaging"]["enabled"] is True
+
+
 TESTS: list[tuple[str, Callable[[], None]]] = [
     ("policy blocks constitution violation", _t_policy_blocks_constitution),
     ("policy risk grading", _t_policy_risk_grading),
@@ -312,6 +381,7 @@ TESTS: list[tuple[str, Callable[[], None]]] = [
     ("developer mode: operator-only", _t_developer_mode_operator_only),
     ("browser tools graded + network-gated", _t_browser_tools_registered_and_gated),
     ("search + media tools graded + gated", _t_search_and_media_tools_graded),
+    ("docs + imaging graded, markdown renders", _t_docs_and_imaging_graded),
 ]
 
 

@@ -61,6 +61,7 @@ class ToolRegistry:
         from . import brain, files, memory, network, selfmodel, shell, system
         from . import browser as _browser
         from . import search as _search, media as _media
+        from . import docs as _docs, imaging as _imaging
         from ..evolution import evolve
 
         TOOL_META = {
@@ -205,6 +206,80 @@ class ToolRegistry:
                             "format": {"type": "string",
                                        "enum": ["mp3", "opus", "aac", "flac", "wav", "pcm"]},
                             "play": {"type": "boolean", "default": False}}),
+            # -- documents (with images) and image editing -------------------
+            _docs.doc_create: ("Create a new document. Blocks are added one at a time and "
+                               "the whole thing renders to md/html/pdf/docx.",
+                               {"path": {"type": "string", "required": True},
+                                "title": {"type": "string", "required": True},
+                                "overwrite": {"type": "boolean", "default": False}}),
+            _docs.doc_add_heading: ("Add a heading to a document.",
+                                    {"path": {"type": "string", "required": True},
+                                     "text": {"type": "string", "required": True},
+                                     "level": {"type": "integer", "default": 2}}),
+            _docs.doc_add_text: ("Add a paragraph to a document.",
+                                 {"path": {"type": "string", "required": True},
+                                  "text": {"type": "string", "required": True}}),
+            _docs.doc_add_code: ("Add a code block to a document.",
+                                 {"path": {"type": "string", "required": True},
+                                  "code": {"type": "string", "required": True},
+                                  "language": {"type": "string"}}),
+            _docs.doc_add_image: ("Embed an image in a document. The image is copied into the "
+                                  "document's assets folder so the document stays portable. "
+                                  "Pair with browser_screenshot or image_generate.",
+                                  {"path": {"type": "string", "required": True},
+                                   "image": {"type": "string", "required": True},
+                                   "caption": {"type": "string"},
+                                   "alt": {"type": "string"},
+                                   "width": {"type": "integer"}}),
+            _docs.doc_add_quote: ("Add a block quote to a document.",
+                                  {"path": {"type": "string", "required": True},
+                                   "text": {"type": "string", "required": True}}),
+            _docs.doc_add_page_break: ("Insert a page break (pdf/docx only).",
+                                       {"path": {"type": "string", "required": True}}),
+            _docs.doc_outline: ("List a document's blocks with their indices. Run this before "
+                                "doc_edit or doc_remove to target the right block.",
+                                {"path": {"type": "string", "required": True}}),
+            _docs.doc_edit: ("Replace the content of one block in place. Edit by index instead "
+                             "of regenerating the document.",
+                             {"path": {"type": "string", "required": True},
+                              "block": {"type": "integer", "required": True},
+                              "text": {"type": "string"},
+                              "caption": {"type": "string"},
+                              "level": {"type": "integer"},
+                              "width": {"type": "integer"}}),
+            _docs.doc_remove: ("Delete a block from a document.",
+                               {"path": {"type": "string", "required": True},
+                                "block": {"type": "integer", "required": True}}),
+            _docs.doc_render: ("Render a document to markdown, HTML, PDF, or DOCX. One document "
+                               "renders to any format; re-render after editing.",
+                               {"path": {"type": "string", "required": True},
+                                "format": {"type": "string",
+                                           "enum": ["md", "html", "pdf", "docx"]},
+                                "out": {"type": "string"}}),
+            _imaging.image_info: ("Report an image's dimensions, format, and size.",
+                                  {"path": {"type": "string", "required": True}}),
+            _imaging.image_edit: ("Edit an image: crop, resize, scale, rotate, flip, grayscale, "
+                                  "or convert format. Operations apply in that order.",
+                                  {"path": {"type": "string", "required": True},
+                                   "out": {"type": "string"},
+                                   "crop": {"type": "string"},
+                                   "width": {"type": "integer"},
+                                   "height": {"type": "integer"},
+                                   "scale": {"type": "number"},
+                                   "rotate": {"type": "number"},
+                                   "flip": {"type": "string",
+                                            "enum": ["horizontal", "vertical"]},
+                                   "grayscale": {"type": "boolean", "default": False},
+                                   "format": {"type": "string"}}),
+            _imaging.image_compose: ("Combine images into one: grid, horizontal, or vertical. "
+                                     "Use for before/after comparisons or contact sheets.",
+                                     {"paths": {"type": "array", "required": True},
+                                      "out": {"type": "string"},
+                                      "layout": {"type": "string",
+                                                 "enum": ["grid", "horizontal", "vertical"]},
+                                      "cols": {"type": "integer"},
+                                      "spacing": {"type": "integer", "default": 12},
+                                      "watermark": {"type": "string"}}),
             evolve: ("Evolve yourself: propose validated, tested changes to your own source.",
                      {"proposal": {"type": "object", "required": True}}),
         }

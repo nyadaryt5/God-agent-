@@ -185,6 +185,24 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_prompt_chars": 4000,
         "timeout_s": 180,
     },
+    # Documents: an ordered block model (heading/text/code/quote/image) that
+    # renders to md, html, pdf, or docx. md/html need nothing; pdf reuses the
+    # headless Chromium; docx needs the optional python-docx extra.
+    "docs": {
+        "enabled": True,
+        "default_format": "md",      # md | html | pdf | docx
+        "embed_images": True,        # base64-embed images so output is one file
+        "pdf_format": "A4",
+        "max_image_mb": 25,          # cap on a single embedded image
+        "output_dir": "",            # empty = render next to the document
+    },
+    # Image editing (Pillow) — resize/crop/rotate/compose before embedding.
+    "imaging": {
+        "enabled": True,
+        "max_image_mb": 25,
+        "jpeg_quality": 90,
+        "default_format": "png",
+    },
     "kill_switch": {"path": "~/.god-agent/DISABLED"},
     "state": {"root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks"},
 }

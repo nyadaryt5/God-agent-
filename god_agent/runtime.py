@@ -90,14 +90,18 @@ class Runtime:
         self._sync_capabilities()
 
     @staticmethod
-    def _playwright_available() -> bool:
+    def _module_available(name: str) -> bool:
         """Cheap import probe — no module import, just a spec lookup."""
         try:
             import importlib.util
 
-            return importlib.util.find_spec("playwright") is not None
+            return importlib.util.find_spec(name) is not None
         except (ImportError, ValueError):
             return False
+
+    @staticmethod
+    def _playwright_available() -> bool:
+        return Runtime._module_available("playwright")
 
     def _sync_capabilities(self) -> None:
         """Reflect current config in the self-model's capability view."""
@@ -116,6 +120,9 @@ class Runtime:
             "browser": network_on and self._playwright_available(),
             "search": network_on and bool(self.cfg.get("search", {}).get("enabled", True)),
             "vision": network_on and bool(self.cfg.get("media", {}).get("enabled", True)),
+            "documents": bool(self.cfg.get("docs", {}).get("enabled", True)),
+            "image_editing": bool(self.cfg.get("imaging", {}).get("enabled", True))
+            and self._module_available("PIL"),
             "evolution": bool(self.cfg["policy"]["evolution"].get("enabled", True)),
             "native": self.cfg["policy"].get("sandbox", "none") == "none",
             "developer_mode": self.dev_mode,

@@ -80,6 +80,23 @@ TOOL_RISK: dict[str, int] = {
     "image_analyze": 3,
     "image_generate": 3,
     "speak": 2,
+    # -- documents + image editing ----------------------------------------
+    # Reading a document outline is harmless; everything that writes to disk
+    # is a 3, matching write_file.
+    "doc_create": 3,
+    "doc_add_heading": 2,
+    "doc_add_text": 2,
+    "doc_add_code": 2,
+    "doc_add_image": 2,
+    "doc_add_quote": 2,
+    "doc_add_page_break": 2,
+    "doc_outline": 1,
+    "doc_edit": 3,
+    "doc_remove": 3,
+    "doc_render": 2,
+    "image_info": 1,
+    "image_edit": 3,
+    "image_compose": 3,
     "evolve": 6,
     "run_plan": 2,
 }
