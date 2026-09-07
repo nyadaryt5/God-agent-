@@ -29,6 +29,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "max_context_tokens": 60_000,
         "task_timeout_s": 0,  # 0 = no artificial timeout — full native execution
         "reflection": {"enabled": True, "after_every_task": True, "max_chars": 600},
+        "swarm": True,  # run a God orchestrator + specialist crew (multi-agent)
+        "engine": "openai_sdk",  # openai_sdk | crewai | langgraph | smolagents | autogen | hermes | ui_tars | grok
         "language": "en",
     },
     "llm": {
@@ -97,6 +99,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "port": 8765,
         "token": "",  # generated at install if empty
         "tls": False,
+    },
+    "mcp": {
+        "enabled": False,  # operator must opt in to connect external MCP servers
+        "servers": [],     # defined in ~/.god-agent/mcp.json (see config/mcp.example.json)
+    },
+    # UI-TARS (ByteDance) vision GUI-agent endpoint. Falls back to the same
+    # OpenAI-compatible provider as "llm" when these are left empty.
+    "ui_tars": {
+        "base_url": "",
+        "model": "",
+        "api_key": "",
     },
     "kill_switch": {"path": "~/.god-agent/DISABLED"},
     "state": {"root": "~/.god-agent", "tasks_dir": "~/.god-agent/tasks"},
@@ -175,6 +188,9 @@ def _env_overrides(cfg: dict) -> None:
         "GODA_API_TOKEN": "api.token",
         "GODA_API_PORT": "api.port",
         "GODA_TASK_TIMEOUT": "agent.task_timeout_s",
+        "GODA_UITARS_BASE_URL": "ui_tars.base_url",
+        "GODA_UITARS_MODEL": "ui_tars.model",
+        "GODA_UITARS_API_KEY": "ui_tars.api_key",
     }
     for env_name, key in mapping.items():
         if os.environ.get(env_name):

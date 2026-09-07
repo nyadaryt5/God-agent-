@@ -1,0 +1,34 @@
+{
+  "$comment": "MCP (Model Context Protocol) servers God-Agent can connect to. This is how God reaches external agents/tools across the internet. Copy to ~/.god-agent/mcp.json and edit. Enable the capability first: set mcp.enabled=true (goda settings mcp.enabled true). Each server exposes tools/agents that God calls through its audited pipeline. Unreachable servers are skipped gracefully.",
+  "servers": [
+    {
+      "name": "filesystem",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+    },
+    {
+      "name": "github",
+      "transport": "http",
+      "enabled": false,
+      "url": "https://mcp.github.com/mcp",
+      "headers": {}
+    },
+    {
+      "name": "sqlite-db",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "python3",
+      "args": ["-m", "mcp_server_sqlite", "--db", "~/.god-agent/memory.db"]
+    },
+    {
+      "name": "ui-tars",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "agent-tars",
+      "args": ["mcp"],
+      "description": "UI-TARS-desktop (ByteDance) exposes a GUI-agent MCP server. Runs `agent-tars mcp` (install with: npm i -g @agent-tars/cli). Once enabled, God can hand a task to a desktop GUI agent that sees and clicks the screen."
+    }
+  ]
+}

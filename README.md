@@ -23,6 +23,8 @@ loop*, which is the honest, engineering version of "consciousness". See
 | **Self-evolution** | The agent proposes changes to itself (new tools, heuristics, docs). Every proposal is validated, built in an isolated tree, byte-compiled, tested, and then **applied (reversible git commit) or handed to a human**. It can never evolve its Constitution or policy code. |
 | **Self-model ("self-awareness")** | Persistent model of its identity, capabilities, boundaries, stats, and lessons. It can introspect itself and, within strict limits, update its own self-description. |
 | **Memory** | Every task becomes an episode; every task ends with a reflection; TF-IDF recall pulls relevant history into context. |
+| **Real agent engine** | Runs the **OpenAI Agents SDK** (MIT, from OpenAI) when an OpenAI-compatible endpoint + key is configured — genuine turn-by-turn reasoning and native function-calling through God-Agent's own tools. Falls back to a built-in offline heuristic planner when no model is available. Pluggable: CrewAI, LangGraph, **Hermes Agent** (Nous Research), **UI-TARS** (ByteDance), **Grok Build** (xAI), smolagents, and AutoGen adapters activate when installed. |
+| **One body, not a crew** | God-Agent is **one organism**. The 100-specialist roster is compressed into **6 functional parts** — 1 **Brain** (reason/memory), 2 **Hands** (Left=act, Right=build), 2 **Legs** (Left=reach/network, Right=move/data), 1 **Torso** (core/guard/cloud). Each part is a real agent that folds its specialists' tools, so nothing is lost. `goda catalog` shows the body, `goda catalog --roster` lists the full 100-specialist portfolio. Add your own agents via `~/.god-agent/agents.json` or `~/.god-agent/agents.d/*.json`. Every tool call from *any* part is still policy-checked and audited. Toggle with `agent.swarm`, pick the engine with `agent.engine`. |
 | **Guardrails (Constitution, not capability limits)** | Immutable Constitution (C1–C7). The only things it cannot do are ones no operator-sane root agent should: no backdooring humans out, no exfiltrating secrets, no hiding actions, never `rm -rf /`-style host destruction. Everything else is native and unlimited. |
 | **Trust** | Append-only, **hash-chained audit log** — tampering is detectable with `goda audit --verify`. Kill switch (`goda disable`) whenever you want it to stop. |
 | **Interfaces** | **Native desktop app** (`goda desktop`, no browser/server), CLI (`goda run/chat/brain/status...`), and an optional HTTP API/dashboard. |
@@ -206,12 +208,75 @@ goda audit --verify
 ## Development / offline demo
 
 ```bash
+pip install -e '.[agents]'             # optionally install the real agent engine
 python3 -m god_agent.selftest          # 0-dependency core tests
 python3 -m pytest -q                   # full test suite (or: make test)
 python3 -m god_agent.desktop           # native app (requires Tk + desktop display)
 goda run "status"                      # works with the built-in heuristic planner
 goda serve                             # OPTIONAL dashboard, no LLM key needed
 ```
+
+When you configure an OpenAI-compatible endpoint with a key (`goda providers
+use` / the AI provider tab), God-Agent switches to the **real agent engine**
+(OpenAI Agents SDK) and, by default, runs a **multi-agent swarm** — a God
+orchestrator delegating to a data-driven crew of specialists. To use a single
+reasoning agent instead, set `agent.swarm` to `false`
+(`goda settings agent.swarm false`).
+
+**Grow the crew ("every agent").** Add any number of agents by writing
+definitions to `~/.god-agent/agents.json` or dropping `*.json` files into
+`~/.god-agent/agents.d/` (see [`config/agents.example.json`](config/agents.example.json)
+for the format — `name`, `handoff`, `instructions`, optional `tools` filter, and
+`engine`). The God orchestrator auto-discovers them. Inspect the active crew:
+
+```bash
+goda catalog                     # list all specialist agents + engines
+goda catalog --domains           # group by domain
+goda catalog --engines           # which real agent engines are installed
+goda catalog SecurityAuditor     # show one agent
+```
+
+**Pluggable engines.** God-Agent runs on the **OpenAI Agents SDK** by default and
+can also run tasks on **CrewAI**, **LangGraph**, **Hermes Agent**, **UI-TARS**,
+and **Grok Build** (real adapters), with smolagents and AutoGen detected when
+installed. Pick with `goda settings agent.engine hermes`; `goda catalog --engines`
+shows what's available, and uninstalled engines fall back to the default. These
+are optional extras: `pip install -e '.[crewai]'`, `pip install -e '.[langgraph]'`,
+`pip install -e '.[hermes]'`, `pip install -e '.[ui-tars]'`, or
+`pip install -e '.[all-engines]'`.
+
+- **Hermes Agent** (Nous Research, MIT) runs God-Agent's task through Hermes's
+  real `run_agent` tool-calling loop against the same OpenAI-compatible endpoint,
+  with its own persistent memory/skill model enabled. God owns tool dispatch and
+  the audit trail, so Hermes's host-level toolsets stay off and it reasons rather
+  than acting off-policy.
+- **UI-TARS** (ByteDance, Apache-2.0) is a vision-based GUI agent: it screenshots
+  the desktop, sends the screenshot + task to a vision LLM, and turns the returned
+  action into pyautogui code that actually moves the mouse/keys. Requires a
+  vision-capable OpenAI-compatible endpoint (`ui_tars.base_url`/`model`/`api_key`,
+  or God's own `llm` provider) and a desktop session. You can also connect the
+  UI-TARS desktop app as an MCP server (`config/mcp.example.json`).
+- **Grok Build** (xAI) is an agentic coding CLI (`grok`). God runs a task through
+  it headlessly (`grok -p "task"`) when the binary is installed, and — because
+  xAI's API (`https://api.x.ai/v1`) is OpenAI-compatible — Grok is also available
+  as a normal **provider** (`goda providers use Grok`) so Grok models can power
+  any engine. Install the CLI with `curl -fsSL https://x.ai/cli/install.sh | bash`.
+
+> **Dependency note:** crewai, langgraph, and hermes-agent each pin their own
+> `openai` / `pydantic` release, which can conflict with the `openai-agents`
+> default engine's required version. That's a pip-metadata warning (the adapters
+> still import and run); if it bothers you, keep the alternate engines in a
+> separate virtualenv or select only the one you need at a time. The offline
+> heuristic planner requires none of them.
+
+**Connect to external agents via MCP (Model Context Protocol).** MCP is the open
+standard for plugging an agent into tools/agents across the internet. Enable it
+with `goda settings mcp.enabled true`, then add servers to
+`~/.god-agent/mcp.json` (see [`config/mcp.example.json`](config/mcp.example.json)):
+stdio (local binary), SSE, or streamable-HTTP (remote) servers. God discovers
+their tools at runtime and calls them through its audited pipeline. `goda catalog
+--mcp` lists what's configured. This is the honest way to reach "every agent" —
+an open registry of MCP servers you point God at, without dependency bloat.
 
 ## Troubleshooting
 
@@ -252,8 +317,15 @@ The honest word on consciousness: [docs/CONSCIOUSNESS.md](docs/CONSCIOUSNESS.md)
 ## Repository layout
 
 ```
-god_agent/          the agent (zero third-party runtime dependencies)
-  loop.py           reasoning loop: perceive → plan → act → reflect → brain
+god_agent/          the agent (zero third-party runtime dependencies for the
+                    core; the optional real engine adds openai-agents)
+  loop.py           reasoning loop: perceive → plan → act → reflect → remember
+  sdk_agent.py      real agent engine bridge (OpenAI Agents SDK) + tool/schema
+  swarm.py          God orchestrator operating as a body (God + 6 body parts)
+  catalog.py        data-driven agent roster (100 specialists) + engine detection
+  body.py           compress the 100 specialists into 6 body parts (Brain/Hands/Legs/Torso)
+  engines.py        optional alternate agent engines (CrewAI/LangGraph/Hermes/UI-TARS/Grok/smolagents/AutoGen)
+  mcp_servers.py    MCP client: connect external agent/tool servers (any transport)
   brain.py          THE BRAIN — credentials (AES-256), prompts, facts, learnings
   policy.py         Constitution + risk/approval engine
   evolution.py      guarded self-modification pipeline
@@ -284,7 +356,11 @@ docs/               constitution, brain, safety, architecture, consciousness
 - [x] Evolution pipeline (validate → test → apply → rollback)
 - [x] One-command installer (local or system-wide) + systemd service
 - [x] Offline heuristic mode (no LLM key needed)
-- [ ] Multi-agent coordination / swarms
+- [x] Multi-agent coordination / swarms (God orchestrator + data-driven specialist crew)
+- [x] Pluggable agent engines (OpenAI Agents SDK default; CrewAI/LangGraph/Hermes/UI-TARS/Grok/smolagents/AutoGen adapters when installed)
+- [x] One body, not a crew — 100 specialists compressed into 6 parts (1 brain, 2 hands, 2 legs, 1 torso)
+- [x] Extensible agent registry (`goda catalog`, `~/.god-agent/agents.json`, `agents.d/`)
+- [x] MCP client (connect external agent/tool servers: stdio, SSE, streamable-HTTP)
 - [ ] Real-time alert rules (thresholds on metrics)
 - [ ] Vault/KMS integration for Brain credentials
 

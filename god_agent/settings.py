@@ -21,6 +21,9 @@ SETTINGS: dict[str, tuple[str, list[str] | None, str]] = {
     "policy.shell.allow_network": ("bool", None, "shell commands may use network"),
     "agent.model": ("str", None, "default model"),
     "agent.max_steps": ("int", None, "max steps per task"),
+    "agent.swarm": ("bool", None, "run God orchestrator + specialist crew (multi-agent)"),
+    "agent.engine": ("str", ["openai_sdk", "crewai", "langgraph", "smolagents", "autogen"],
+                     "agent engine (only installed ones are used)"),
     "brain.auto_write": ("bool", None, "AI auto-writes important learnings"),
     "brain.inject_prompts": ("bool", None, "inject operator prompts into context"),
     "brain.inject_credentials": ("bool", None, "inject credential values into context"),
@@ -28,6 +31,7 @@ SETTINGS: dict[str, tuple[str, list[str] | None, str]] = {
     "execution.cpu_limit_s": ("int", None, "CPU seconds cap (-1 = unlimited)"),
     "execution.max_processes": ("int", None, "child process cap (-1 = unlimited)"),
     "api.port": ("int", None, "API port"),
+    "mcp.enabled": ("bool", None, "connect external MCP agent/tool servers"),
 }
 
 

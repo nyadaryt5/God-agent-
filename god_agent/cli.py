@@ -129,6 +129,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     dv = sub.add_parser("dev", help="developer mode (operator-only toggle)")
     dv.add_argument("state", nargs="?", choices=["on", "off", "status"])
 
+    cat = sub.add_parser("catalog", help="list the God body (parts) and available engines")
+    cat.add_argument("--domains", action="store_true", help="list agent domains")
+    cat.add_argument("--engines", action="store_true", help="list available agent engines")
+    cat.add_argument("--mcp", action="store_true", help="list connected MCP agent/tool servers")
+    cat.add_argument("--body", action="store_true", help="show the compressed body (6 parts) [default]")
+    cat.add_argument("--roster", action="store_true", help="show the full 100-specialist portfolio")
+    cat.add_argument("--json", action="store_true", help="machine-readable output")
+    cat.add_argument("name", nargs="?", help="show one agent/body part by name")
+
     sub.add_parser("version", help="print version")
     args = p.parse_args(argv)
 
@@ -157,7 +166,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd in ("run", "chat", "serve", "daemon", "status", "doctor", "memory",
                     "audit", "self", "evolve", "brain", "disable", "enable",
-                    "settings", "providers", "dev"):
+                    "settings", "providers", "dev", "catalog"):
         try:
             rt = Runtime(cfg, approver=_make_approver(args, console))
         except Exception as e:  # noqa: BLE001
@@ -196,6 +205,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0
     if args.cmd == "evolve":
         return _cmd_evolve(rt, args, console)
+    if args.cmd == "catalog":
+        return _cmd_catalog(rt, args, console)
     if args.cmd == "disable":
         return _cmd_kill(rt, cfg, console, enable=False)
     if args.cmd == "enable":
@@ -344,6 +355,14 @@ def _cmd_status(rt, console, cfg) -> int:
     print(f"  dev mode:  {'⚡ ON — no refusals' if rt.dev_mode else 'off'}"
           + ("   (goda dev off to disable)" if rt.dev_mode else "   (goda dev on to enable)"))
     print(f"  evolution: {'enabled' if rt.cfg['policy']['evolution'].get('enabled') else 'disabled'}")
+    from .catalog import build_catalog, available_engines
+    cat = build_catalog(rt.cfg)
+    eng = rt.cfg["agent"].get("engine", "openai_sdk")
+    engines = available_engines()
+    eng_mark = "✔" if engines.get(eng) else "(not installed → fallback)"
+    print(f"  engine:    {eng} {eng_mark}")
+    print(f"  crew:      {len(cat)} specialist agent(s) + God orchestrator"
+          + ("" if rt.cfg["agent"].get("swarm", True) else "  [swarm OFF]"))
     print(f"  memory:    {stats['episodes']} episodes, {stats['reflections']} reflections, "
           f"success rate {stats['successful'] / max(1, stats['episodes']):.0%}")
     print(f"  audit:     {rt.audit.count()} entries, {'VERIFIED' if ok else 'TAMPERED!'}")
@@ -577,7 +596,8 @@ def _cmd_memory(rt, args, console) -> int:
         hits = rt.memory.search(args.query, limit=args.limit)
         print(json.dumps(hits, indent=2, ensure_ascii=False) or "(no results)")
     elif args.mem_cmd == "remember":
-        eid = rt.memory.add_episode(args.query or args.summary, args.summary, args.outcome)
+        # The `remember` subcommand defines `summary` (not `query`); don't crash.
+        eid = rt.memory.add_episode(args.summary, args.summary, args.outcome)
         console.ok(f"stored episode #{eid}")
     else:
         console.error("usage: goda memory search|remember ...")
@@ -646,6 +666,96 @@ def _cmd_kill(rt, cfg, console, enable: bool) -> int:
             fh.write(f"disabled at {now_iso()} by CLI\n")
         rt.audit.append("operator", "kill_switch", "agent DISABLED via CLI")
         console.warn("kill switch ON — agent will halt at the next step")
+    return 0
+
+
+def _cmd_catalog(rt, args, console) -> int:
+    """List the agent crew (specialists), domains, and available engines."""
+    from .catalog import available_engines, build_catalog
+    from . import body as body_mod
+
+    engines = available_engines()
+
+    if args.mcp:
+        from .mcp_servers import load_servers, registry_path
+        servers = load_servers(rt.cfg)
+        if args.json:
+            print(json.dumps(servers, indent=2, ensure_ascii=False))
+            return 0
+        enabled = bool(rt.cfg["mcp"].get("enabled", False))
+        print(f"\nMCP servers ({'enabled' if enabled else 'DISABLED'}) — external agents/tools:")
+        if not servers:
+            print("  none configured. Add servers to " + ", ".join(registry_path(rt.cfg)))
+        for s in servers:
+            url = s.get("url") or " ".join([s.get("command", ""), *s.get("args", [])])
+            print(f"  • {s['name']:<20} {s.get('transport'):<20} {url}")
+        return 0
+
+    if args.engines:
+        if args.json:
+            print(json.dumps(engines, indent=2, ensure_ascii=False))
+            return 0
+        print("\nAgent engines (detected at runtime):")
+        for name, ok in engines.items():
+            mark = "✔" if ok else "—"
+            print(f"  {mark} {name:<18} {'available' if ok else 'not installed (optional extra)'}")
+        return 0
+
+    catalog = build_catalog(rt.cfg)
+
+    if args.domains:
+        domains = sorted({r["domain"] for r in catalog})
+        if args.json:
+            print(json.dumps(domains, indent=2, ensure_ascii=False))
+            return 0
+        print(f"\nAgent domains ({len(domains)}): " + ", ".join(domains))
+        return 0
+
+    if args.name:
+        match = next((r for r in catalog if r["name"].lower() == args.name.lower()), None)
+        if not match:
+            match = next((p for p in body_mod.build_body(rt.cfg) if p["name"].lower() == args.name.lower()), None)
+        if not match:
+            console.error(f"no agent/body part named '{args.name}'")
+            return 1
+        if args.json:
+            print(json.dumps(match, indent=2, ensure_ascii=False))
+            return 0
+        print(f"\n{match['name']}  [{match['domain']}]")
+        if match.get("members"):
+            print(f"  members: {', '.join(match['members'])} ({len(match['members'])} specialists)")
+        print(f"  handoff: {match['handoff']}")
+        print(f"  engine:  {match['engine']}")
+        print(f"  tools:   {'full set' if not match['tools'] else ', '.join(match['tools'])}")
+        print(f"  prompt:  {match['instructions'][:300]}")
+        return 0
+
+    if args.json:
+        data = build_catalog(rt.cfg)
+        if not args.roster:
+            data = body_mod.build_body(rt.cfg)
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return 0
+
+    if args.roster:
+        print(f"\nGod-Agent roster — {len(catalog)} specialist agent(s) (the full portfolio).")
+        print("Each specialist is folded into a body part; use `goda catalog --body` to see the body.\n")
+        for r in catalog:
+            tools = ", ".join(r["tools"]) if r["tools"] else "all"
+            print(f"  • {r['name']:<28} [{r['domain']:<10}] {r['handoff']}")
+            print(f"      tools: {tools}")
+        return 0
+
+    # Default: the compressed body (6 super-agents = the whole organism).
+    body = body_mod.build_body(rt.cfg)
+    print(f"\nGod-Agent body — {len(body)} parts, folding all {len(catalog)} specialists into one organism.")
+    print("  1 Brain · 2 Hands · 2 Legs · 1 Torso")
+    print("  use `goda catalog --roster` to list every specialist; `goda catalog <part>` for one part.\n")
+    for p in body:
+        tools = ", ".join(p["tools"]) if p["tools"] else "all"
+        print(f"  • {p['name']:<11} [{p['domain']:<24}] {p['handoff']}")
+        print(f"      members: {len(p['members'])} specialists")
+        print(f"      tools:   {tools}")
     return 0
 
 
