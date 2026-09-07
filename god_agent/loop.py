@@ -86,6 +86,40 @@ class Agent:
         self.progress = progress or (lambda msg: None)
 
     # ------------------------------------------------------------------
+    def _use_real_engine(self) -> bool:
+        """Use the real OpenAI Agents SDK engine when a live OpenAI-compatible
+        endpoint + key is configured and the SDK is installed. Otherwise fall
+        back to the offline heuristic planner / legacy single-plan path."""
+        try:
+            from . import sdk_agent
+            return sdk_agent.engine_usable(self.rt.cfg)
+        except Exception:
+            return False
+
+    def _run_real(self, task: str, *, history=None, max_steps: int, tid: int,
+                  use_swarm: bool = True) -> TaskResult:
+        """Run one task through the real OpenAI Agents SDK engine — a God
+        orchestrator plus a crew of specialist agents when available (swarm),
+        otherwise a single real reasoning agent — then do the same
+        reflection/memory/self-model/audit bookkeeping as the legacy path."""
+        from . import sdk_agent, swarm
+
+        rt = self.rt
+        want_swarm = use_swarm and rt.cfg["agent"].get("swarm", True)
+        if want_swarm:
+            # Prefer the multi-agent crew; fall back to a single real reasoning
+            # agent only if the crew cannot be constructed (e.g. handoff issue).
+            try:
+                from . import swarm as _swarm
+                result = _swarm.run(rt, task, history=history or [], max_steps=max_steps)
+            except Exception:
+                result = sdk_agent.run(rt, task, history=history or [], max_steps=max_steps)
+        else:
+            result = sdk_agent.run(rt, task, history=history or [], max_steps=max_steps)
+        self._remember(task, result, tid)
+        return result
+
+    # ------------------------------------------------------------------
     def run(self, task: str, *,
             max_steps: Optional[int] = None,
             evolution: bool = False,
@@ -96,6 +130,12 @@ class Agent:
         tid = rt.next_task_id()
         rt.self_model.set_state(status="working", current_task=task[:200])
         self.progress(f"[{tid}] accepted: {task[:120]}")
+
+        # REAL AGENT: use the open-source OpenAI Agents SDK engine when possible.
+        if self._use_real_engine():
+            result = self._run_real(task, history=history, max_steps=max_steps, tid=tid)
+            result.duration_s = round(time.monotonic() - start, 2)
+            return result
 
         # PERCEIVE
         self._perceive(task)
@@ -155,7 +195,18 @@ class Agent:
         result.summary = summary or result.summary or "completed"
         result.reflection = reflection
 
-        # REMEMBER
+        # REMEMBER (shared persist phase)
+        self._remember(task, result, tid)
+
+        result.duration_s = round(time.monotonic() - start, 2)
+        return result
+
+    # ------------------------------------------------------------------
+    def _remember(self, task: str, result: TaskResult, tid: int) -> None:
+        """Shared persist phase (memory + self-model + brain + audit) used by
+        both the real-engine path and the legacy path."""
+        rt = self.rt
+        outcome_ok = bool(result.success)
         ep_id = rt.memory.add_episode(task, result.summary, "ok" if outcome_ok else "error")
         if result.reflection:
             rt.memory.add_reflection(result.reflection, ep_id)
@@ -166,12 +217,10 @@ class Agent:
         stats["successes"] += 1 if outcome_ok else 0
         stats["failures"] += 0 if outcome_ok else 1
         rt.self_model.record_stats(**stats)
-        self._finish(task, result, tid, outcome_ok, summary, reflection, ep_id)
+        self._finish(task, result, tid, outcome_ok,
+                     result.summary, result.reflection, ep_id)
         rt.record("task_end", f"task #{tid}: {'success' if outcome_ok else 'failed'}",
                   {"steps": len(result.steps)})
-
-        result.duration_s = round(time.monotonic() - start, 2)
-        return result
 
     # ------------------------------------------------------------------
     def _perceive(self, task: str) -> None:

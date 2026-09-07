@@ -43,7 +43,13 @@
 
 | module | role |
 |--------|------|
-| `god_agent.loop` | agent reasoning loop (plan → act → reflect → brain) |
+| `god_agent.loop` | agent loop: perceive → (real engine | heuristic) → act → reflect → remember |
+| `god_agent.sdk_agent` | real agent engine bridge: OpenAI Agents SDK model/tool/schema wiring |
+| `god_agent.swarm` | God orchestrator operating as a body: God + 6 body-part agents (SDK handoffs) |
+| `god_agent.catalog` | data-driven agent roster (built-in 100 + user definitions) + engine detection |
+| `god_agent.body` | compress the 100 specialists into 6 body parts (Brain, 2 Hands, 2 Legs, Torso) |
+| `god_agent.engines` | pluggable agent engines: OpenAI SDK (default), CrewAI/LangGraph/Hermes/UI-TARS/Grok adapters (functional), smolagents/AutoGen (detected, not implemented) |
+| `god_agent.mcp_servers` | MCP client: connect external agent/tool servers (stdio, SSE, streamable-HTTP) |
 | `god_agent.brain` | THE BRAIN: two-writer rule, encrypted credentials, auto-write |
 | `god_agent.policy` | Constitution + risk grades + decisions |
 | `god_agent.executor` | native execution (limits OFF by default; docker optional) |

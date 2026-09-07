@@ -18,7 +18,7 @@ from typing import Any, Optional
 from .utils import now_iso
 
 IMMUTABLE_KEYS = {"schema_version", "identity", "version", "formed_at",
-                  "stats", "boundaries", "state"}
+                  "stats", "boundaries", "state", "body"}
 
 ALLOWED_UPDATE_KEYS = {"capabilities", "learned", "notes", "current_goal"}
 
@@ -35,9 +35,11 @@ class SelfModel:
     # ------------------------------------------------------------------
     @staticmethod
     def _fresh() -> dict:
+        from . import body as body_mod
         return {
             "schema_version": 1,
-            "identity": "God-Agent (goda)",
+            "identity": body_mod.body_identity(),
+            "body": body_mod.build_body(),   # the 6 compressed body parts (self-identity)
             "version": "0.1.0",
             "formed_at": now_iso(),
             "state": {"status": "booting", "mode": "supervised", "uptime_s": 0},
@@ -54,6 +56,7 @@ class SelfModel:
                 "self_model": True,
                 "evolution": True,
                 "native": True,
+                "body": True,
             },
             "learned": [],
             "notes": "",

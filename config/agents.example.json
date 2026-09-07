@@ -1,0 +1,29 @@
+{
+  "$comment": "God-Agent agent registry (drop this at ~/.god-agent/agents.json or into ~/.god-agent/agents.d/*.json to grow the crew). Add as many agents as you want — the God orchestrator auto-discovers them. Copy the file into your installed state root and edit freely.",
+  "agents": [
+    {
+      "name": "DatabaseAdmin",
+      "domain": "data",
+      "handoff": "Databases (postgres/mysql/sqlite/redis), health, queries, backups, size.",
+      "instructions": "You are the DatabaseAdmin specialist. Inspect database health/size, run read-only diagnostics, and back up safely. Avoid destructive SQL; never dump credentials into output.",
+      "tools": [],
+      "engine": "openai_sdk"
+    },
+    {
+      "name": "KubernetesOperator",
+      "domain": "web",
+      "handoff": "Kubernetes/kubectl clusters, pods, deployments, nodes, workloads.",
+      "instructions": "You are the KubernetesOperator specialist. Inspect clusters/nodes/pods/deployments with kubectl, check health and resource usage, and propose safe, reversible changes. Never delete workloads without a plan.",
+      "tools": [],
+      "engine": "openai_sdk"
+    },
+    {
+      "name": "AIConsole",
+      "domain": "intel",
+      "handoff": "Reason over LLM/ML tooling, model endpoints, inference health on this host.",
+      "instructions": "You are the AIConsole specialist. Report on LLM/ML tooling and inference endpoints present on the host. Never expose API keys or send data off-host.",
+      "tools": ["system_info", "shell_exec", "hardware_info", "gpu_info", "brain_read", "fetch_url"],
+      "engine": "openai_sdk"
+    }
+  ]
+}

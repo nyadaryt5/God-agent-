@@ -11,6 +11,9 @@ Profiles live in ~/.god-agent/providers.json (or cfg.state.root/providers.json):
       {"name": "OpenAI", "type": "openai",
        "base_url": "https://api.openai.com/v1", "api_key": "sk-...",
        "model": "gpt-4o-mini"},
+      {"name": "Grok", "type": "openai",
+       "base_url": "https://api.x.ai/v1", "api_key": "",
+       "model": "grok-build-0.1", "key_env": "XAI_API_KEY"},
       {"name": "Ollama", "type": "openai",
        "base_url": "http://localhost:11434/v1", "api_key": "",
        "model": "llama3.1"},
@@ -64,7 +67,7 @@ class ProviderManager:
     # ------------------------------------------------------------------
     def load(self) -> None:
         if not os.path.isfile(self.path):
-            self.profiles = [default_profile(), openai_profile()]
+            self.profiles = [default_profile(), openai_profile(), grok_profile()]
             self.active = self.profiles[0]["name"]
             self.save()
             return
@@ -74,13 +77,13 @@ class ProviderManager:
             self.profiles = data.get("profiles", [])
             self.active = data.get("active", "")
             if not self.profiles:
-                self.profiles = [default_profile(), openai_profile()]
+                self.profiles = [default_profile(), openai_profile(), grok_profile()]
                 self.active = self.profiles[0]["name"]
                 self.save()
             if not any(p["name"] == self.active for p in self.profiles):
                 self.active = self.profiles[0]["name"]
         except (json.JSONDecodeError, OSError):
-            self.profiles = [default_profile(), openai_profile()]
+            self.profiles = [default_profile(), openai_profile(), grok_profile()]
             self.active = self.profiles[0]["name"]
             self.save()
 
@@ -269,3 +272,15 @@ def openai_profile() -> dict:
     return {"name": "OpenAI", "type": "openai",
             "base_url": "https://api.openai.com/v1",
             "api_key": "", "model": "gpt-4o-mini", "key_env": "GODA_API_KEY"}
+
+
+def grok_profile() -> dict:
+    """xAI's Grok — OpenAI-compatible endpoint (https://api.x.ai/v1).
+
+    God speaks to xAI like any OpenAI-compatible host, so Grok models
+    (grok-4, grok-build-0.1, ...) work as the LLM backend for every engine.
+    The key comes from XAI_API_KEY (or the active profile's key/key_env).
+    """
+    return {"name": "Grok", "type": "openai",
+            "base_url": "https://api.x.ai/v1",
+            "api_key": "", "model": "grok-build-0.1", "key_env": "XAI_API_KEY"}

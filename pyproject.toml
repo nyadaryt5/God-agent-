@@ -14,6 +14,25 @@ keywords = ["agent", "ai", "sysadmin", "linux", "self-evolving", "automation"]
 dependencies = []
 
 [project.optional-dependencies]
+# Real agent engines. God-Agent falls back to the built-in offline heuristic
+# planner when none of these are installed. Install one or more; each becomes
+# selectable via `goda settings agent.engine <name>`.
+# Note: crewai, langgraph, and hermes-agent each pin their own `openai`/`pydantic`
+# versions, so mixing several of them in one venv may raise pip conflict warnings;
+# the individual engines still import and run (see README). For a conflict-free
+# GUI stack, install `ui-tars` + `gui` together. Grok Build is a CLI (no pip
+# extra): `curl -fsSL https://x.ai/cli/install.sh | bash` — God detects the `grok`
+# binary and drives it headlessly; xAI's API is also a selectable provider.
+agents = ["openai-agents>=0.10"]
+crewai = ["crewai>=0.100"]
+langgraph = ["langgraph>=0.2"]
+hermes = ["hermes-agent>=0.18"]
+ui-tars = ["ui-tars>=0.4.8"]
+# UI-TARS can actually act on the desktop (screenshot + pyautogui). headless-only
+# use needs just `ui-tars` (+ a vision OpenAI-compatible endpoint).
+gui = ["pyautogui", "pillow"]
+all-engines = ["openai-agents>=0.10", "crewai>=0.100", "langgraph>=0.2",
+               "hermes-agent>=0.18", "ui-tars>=0.4.8"]
 dev = ["pytest>=7"]
 
 [project.scripts]
